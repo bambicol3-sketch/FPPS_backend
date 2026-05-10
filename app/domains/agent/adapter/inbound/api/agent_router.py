@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import redis.asyncio as aioredis
@@ -5,6 +6,8 @@ from fastapi import APIRouter, Cookie, Depends, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.exception.app_exception import AppException
+
+logger = logging.getLogger(__name__)
 from app.common.response.base_response import BaseResponse
 from app.domains.agent.adapter.outbound.cache.redis_finance_analysis_cache import (
     RedisFinanceAnalysisCache,
@@ -62,15 +65,30 @@ router = APIRouter(prefix="/agent", tags=["Agent"])
 
 
 async def _require_auth(request: Request, redis: aioredis.Redis) -> None:
-    """쿼리 파라미터 → 쿠키 → Authorization 헤더 순으로 토큰을 확인합니다."""
+    """쿼리 파라미터 → 쿠키 → Authorization/X-Auth-Token 헤더 순으로 토큰을 확인합니다."""
+    auth_header = request.headers.get("authorization", "")
+    bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header else ""
+
     token = (
         request.query_params.get("token")
         or request.cookies.get("user_token")
-        or (
-            request.headers.get("authorization", "").removeprefix("Bearer ").strip()
-            or None
-        )
+        or request.cookies.get("temp_token")
+        or (bearer_token or None)
+        or request.headers.get("x-auth-token")
     )
+
+    logger.info(
+        "[agent/_require_auth] path=%s query_token=%s cookie_user_token=%s cookie_temp_token=%s auth_header=%s x_auth_token=%s resolved=%s cookie_names=%s",
+        request.url.path,
+        request.query_params.get("token"),
+        request.cookies.get("user_token"),
+        request.cookies.get("temp_token"),
+        auth_header[:30] if auth_header else "",
+        request.headers.get("x-auth-token"),
+        token,
+        list(request.cookies.keys()),
+    )
+
     if not token:
         raise AppException(status_code=401, message="인증이 필요합니다.")
     if not await redis.get(f"{SESSION_KEY_PREFIX}{token}"):

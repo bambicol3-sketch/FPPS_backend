@@ -10,6 +10,9 @@ from app.domains.agent.application.response.sub_agent_response import SubAgentRe
 from app.domains.news.adapter.outbound.external.article_content_scraper import (
     ArticleContentScraper,
 )
+from app.domains.news.adapter.outbound.external.trafilatura_article_scraper import (
+    TrafilaturaArticleScraper,
+)
 from app.domains.news.adapter.outbound.external.openai_article_analysis_provider import (
     OpenAIArticleAnalysisProvider,
 )
@@ -158,6 +161,45 @@ async def analyze_article(
     return BaseResponse.ok(data=result)
 
 
+@router.post(
+    "/interest-articles",
+    response_model=BaseResponse[SaveUserArticleResponse],
+    status_code=201,
+)
+async def save_interest_article(
+    request: SaveUserArticleRequest,
+    user_token: Optional[str] = Cookie(default=None),
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+    vector_db: AsyncSession = Depends(get_vector_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """인증된 사용자가 관심 기사를 저장한다.
+
+    - 메타데이터(제목, 출처, 링크, 게시 시간, 저장 사용자)는 구조화 DB(MySQL 역할)에 저장
+    - 기사 본문 및 원본 메타데이터는 PostgreSQL JSONB 컬럼에 저장
+    - trafilatura로 본문/광고/네비게이션을 분리 추출
+    - 동일 사용자 + 동일 링크 중복 저장 차단 (409 Conflict)
+    """
+    token = _extract_token(user_token, authorization)
+    if not token:
+        raise AppException(status_code=401, message="인증이 필요합니다.")
+
+    account_id_str = await redis.get(f"{SESSION_KEY_PREFIX}{token}")
+    if not account_id_str:
+        raise AppException(status_code=401, message="세션이 만료되었거나 유효하지 않습니다.")
+
+    account_id = int(account_id_str)
+
+    usecase = SaveUserArticleUseCase(
+        user_article_repo=UserSavedArticleRepositoryImpl(db),
+        content_repo=ArticleContentRepositoryImpl(vector_db),
+        content_provider=TrafilaturaArticleScraper(),
+    )
+    result = await usecase.execute(account_id=account_id, request=request)
+    return BaseResponse.ok(data=result)
+
+
 @router.post("/bookmark", response_model=BaseResponse[SaveUserArticleResponse], status_code=201)
 async def bookmark_article(
     request: SaveUserArticleRequest,
@@ -167,7 +209,7 @@ async def bookmark_article(
     vector_db: AsyncSession = Depends(get_vector_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    """인증된 사용자가 관심 기사를 저장한다. 메타데이터는 PostgreSQL(구조화), 본문은 JSONB에 저장된다."""
+    """(legacy) /interest 와 동일한 기능. BeautifulSoup 기반 기존 스크래퍼를 사용한다."""
     token = _extract_token(user_token, authorization)
     if not token:
         raise AppException(status_code=401, message="인증이 필요합니다.")

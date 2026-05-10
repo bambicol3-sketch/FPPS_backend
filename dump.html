@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>메인 대시보드 - 나딱구 공부방</title>
+
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Chart.js (category 타입만 사용하므로 date adapter 불필요) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Custom CSS -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .navbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
+
+        .card {
+            box-shadow: 0 1px 3px rgba(0,0,0,.1);
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 8px;
+        }
+
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+        }
+
+        /* Tooltip 스타일 */
+        .term-help {
+            cursor: help;
+            border-bottom: 1px dotted #6b7280;
+            text-decoration: none;
+        }
+
+        .term-help i {
+            font-size: 0.85em;
+            margin-left: 2px;
+        }
+
+        /* 용어 설명 섹션 */
+        .glossary {
+            background-color: #f9fafb;
+            border-top: 2px solid #e5e7eb;
+            padding: 30px;
+            margin-top: 40px;
+        }
+
+        .glossary-item {
+            margin-bottom: 20px;
+        }
+
+        .glossary-term {
+            font-weight: 600;
+            color: #1e3a8a;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* 차트 플레이스홀더 */
+        .chart-placeholder {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            border-radius: 8px;
+        }
+
+        /* 테이블 호버 효과 */
+        .table-hover tbody tr:hover {
+            background-color: #f3f4f6;
+            cursor: pointer;
+        }
+
+        /* 배지 스타일 */
+        .badge {
+            font-weight: 500;
+            padding: 0.35em 0.65em;
+        }
+
+        /* 진행률 바 */
+        .progress {
+            height: 1.5rem;
+            border-radius: 0.375rem;
+        }
+
+        /* 반응형 테이블 */
+        @media (max-width: 768px) {
+            .table-responsive {
+                font-size: 0.875rem;
+            }
+        }
+
+        /* 로딩 스피너 */
+        .spinner-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
+
+        /* 종목 검색 스타일 */
+        .stock-search-container {
+            position: relative;
+            width: 300px;
+        }
+
+        .stock-search-input {
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .stock-search-input:focus {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-color: #86b7fe;
+            outline: 0;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        .stock-search-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .stock-search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 0.25rem;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1050;
+            display: none;
+        }
+
+        .stock-search-results.show {
+            display: block;
+        }
+
+        .stock-search-item {
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+
+        .stock-search-item:last-child {
+            border-bottom: none;
+        }
+
+        .stock-search-item:hover {
+            background-color: #f8f9fa;
+            text-decoration: none;
+        }
+
+        
+<style>
+    .index-card { border-left: 4px solid #1e3a8a; }
+    .index-card.positive { border-left-color: #10b981; }
+    .index-card.negative { border-left-color: #ef4444; }
+    .stat-number { font-size: 2rem; font-weight: bold; }
+    .stat-label { color: #6b7280; font-size: 0.875rem; }
+    .change-positive { color: #10b981; }
+    .change-negative { color: #ef4444; }
+    .phase-badge { font-size: 1.5rem; padding: 10px 20px; }
+    .sector-item { padding: 10px; border-bottom: 1px solid #e5e7eb; }
+    .sector-item:last-child { border-bottom: none; }
+    .progress-thin { height: 8px; }
+    #sectorDistributionCardBody {
+        height: 383px;
+    }
+    #escoreTabContent {
+        height: 300px; /* 고정 높이 */
+        position: relative; /* 자식 tab-pane의 absolute 포지셔닝을 위한 기준 */
+    }
+
+    #escoreTabContent .tab-pane {
+        position: absolute; /* 겹쳐 보이지 않도록 absolute 포지셔닝 */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%; /* 부모 escoreTabContent의 높이를 상속 (300px) */
+        display: flex; /* 내부 캔버스가 유연하게 크기를 조절하도록 */
+        justify-content: center; /* 캔버스 수평 중앙 정렬 (선택 사항) */
+        align-items: center; /* 캔버스 수직 중앙 정렬 (선택 사항) */
+    }
+    #escoreTabContent canvas {
+        /* tab-pane의 높이를 100%로 채우도록 */
+        height: 100% !important;
+        width: 100% !important;
+        display: block;
+    }
+</style>
+
+    </style>
+</head>
+<body>
+    <!-- 네비게이션 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/stock/dashboard/">
+                <i class="bi bi-graph-up-arrow"></i> 나딱구 공부방
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active"
+                           href="/stock/dashboard/">
+                            <i class="bi bi-speedometer2"></i> 대시보드
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link "
+                           href="/stock/market/">
+                            <i class="bi bi-graph-up"></i> 시장 분석
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link "
+                           href="/stock/sectors/">
+                            <i class="bi bi-pie-chart"></i> 산업군 분석
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link "
+                           href="/stock/credit-spread/">
+                            <i class="bi bi-bank"></i> 신용 스프레드 분석
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link "
+                           href="/stock/board/">
+                            <i class="bi bi-chat-left-text"></i> 게시판
+                        </a>
+                    </li>
+                    
+                    
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <div class="stock-search-container">
+                            <input
+                                type="text"
+                                id="stockSearchInput"
+                                class="stock-search-input"
+                                placeholder="종목 검색..."
+                                autocomplete="off"
+                            />
+                            <div id="stockSearchResults" class="stock-search-results"></div>
+                        </div>
+                    </li>
+                    <li class="nav-item">
+                        <span class="nav-link">
+                            <i class="bi bi-calendar3"></i>
+                            
+                                2026-04-24 (Fri)
+                            
+                        </span>
+                    </li>
+                    <li class="nav-item">
+                        
+                        <span class="nav-link">
+                            
+                            <i class="bi bi-person text-secondary"></i>
+                            <span class="badge bg-secondary">user</span>
+                            
+                            user
+                        </span>
+                        </li>
+                        </li>
+                        <li class="nav-item">
+                        <a class="nav-link" href="/stock/logout" title="로그아웃">
+                            <i class="bi bi-box-arrow-right"></i> 로그아웃
+                        </a>
+                        
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 메인 컨텐츠 -->
+    <div class="container-fluid mt-4">
+        <!-- Flash 메시지 -->
+        
+            
+        
+
+        
+<!-- 페이지 헤더 -->
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h2><i class="bi bi-speedometer2"></i> 메인 대시보드</h2>
+            <p class="text-muted mb-0">시장 전체 현황 및 주도 업종 파악</p>
+        </div>
+        <div class="text-end">
+            <small class="text-muted">
+                <i class="bi bi-people-fill"></i> 오늘 방문: <strong>10</strong>명
+                | 전체: <strong>307</strong>명
+            </small>
+        </div>
+    </div>
+</div>
+<!-- 시장 지수 현황 -->
+<div class="row mb-4">
+    
+    <div class="col-md-4">
+        <div class="card index-card ">
+            <div class="card-body">
+                <h5 class="card-title">KOSPI</h5>
+                <div class="stat-number ">
+                    6,475.63
+                </div>
+                <div class="stat-label">
+                    
+                        <i class="bi bi-dash"></i> 0.00%
+                    
+                </div>
+                <hr>
+                <div class="row small">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="가중 이동평균선 (최근 120일)">
+                            WSMA120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>5,080.25
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="WSMA120의 5일 변화량">
+                            Slope120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>105.03
+                    </div>
+                </div>
+                <div class="row small mt-2">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="Slope120의 변화량 (가속도)">
+                            Curv120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>1.37
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="표준화 이격도">
+                            Z180 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>1.89
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card index-card negative">
+            <div class="card-body">
+                <h5 class="card-title">KOSPI200</h5>
+                <div class="stat-number change-negative">
+                    971.87
+                </div>
+                <div class="stat-label">
+                    
+                        <i class="bi bi-arrow-down"></i> -0.38%
+                    
+                </div>
+                <hr>
+                <div class="row small">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="가중 이동평균선 (최근 120일)">
+                            WSMA120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>745.21
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="WSMA120의 5일 변화량">
+                            Slope120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>17.63
+                    </div>
+                </div>
+                <div class="row small mt-2">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="Slope120의 변화량 (가속도)">
+                            Curv120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>0.19
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="표준화 이격도">
+                            Z180 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>1.85
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card index-card positive">
+            <div class="card-body">
+                <h5 class="card-title">KOSDAQ</h5>
+                <div class="stat-number change-positive">
+                    1,203.84
+                </div>
+                <div class="stat-label">
+                    
+                        <i class="bi bi-arrow-up"></i> +2.51%
+                    
+                </div>
+                <hr>
+                <div class="row small">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="가중 이동평균선 (최근 120일)">
+                            WSMA120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>1,046.36
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="WSMA120의 5일 변화량">
+                            Slope120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>12.89
+                    </div>
+                </div>
+                <div class="row small mt-2">
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="Slope120의 변화량 (가속도)">
+                            Curv120 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>-0.13
+                    </div>
+                    <div class="col-6">
+                        <span class="term-help"
+                              data-bs-toggle="tooltip"
+                              title="표준화 이격도">
+                            Z180 <i class="bi bi-question-circle-fill text-info"></i>
+                        </span>
+                        <br>1.69
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+<!-- 시장 지수 추세 차트 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> 시장 지수 추세</h5>
+            </div>
+            <div class="card-body" style="height: 450px;">
+                <canvas id="marketIndexTrendChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- 오늘의 시장 해석 (Phase 1) -->
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-secondary">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-clipboard-data"></i> 오늘의 시장 해석
+                </h5>
+                <small class="text-muted">2026-04-24</small>
+            </div>
+            <div class="card-body">
+                <!-- 시장 유형 + 신뢰도 -->
+                <div class="d-flex align-items-center mb-3">
+                    <span class="badge bg-secondary fs-6 me-2">
+                        <i class="bi bi-dash-lg"></i>
+                        혼조세
+                    </span>
+                    <span class="badge bg-success me-2">
+                        <i class="bi bi-rocket-takeoff"></i>
+                        상승 가속
+                    </span>
+                    <span class="badge bg-warning text-dark">
+                        MEDIUM
+                    </span>
+                </div>
+
+                <!-- 요약 -->
+                <p class="mb-3">매수/매도가 뒤섞여 방향 없는 관망장.</p>
+
+                <!-- 지표 탭 (숫자 / 레이더 차트) -->
+                <ul class="nav nav-tabs nav-tabs-sm mb-3" id="interpIndicatorTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active py-1 px-2 small" id="interp-num-tab" data-bs-toggle="tab"
+                                data-bs-target="#interp-num" type="button" role="tab">
+                            <i class="bi bi-grid-3x3"></i> 지표
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-1 px-2 small" id="interp-radar-tab" data-bs-toggle="tab"
+                                data-bs-target="#interp-radar" type="button" role="tab">
+                            <i class="bi bi-diagram-3"></i> 차트
+                        </button>
+                    </li>
+                </ul>
+                <div class="tab-content mb-3">
+                    <!-- 숫자 탭 -->
+                    <div class="tab-pane fade show active" id="interp-num" role="tabpanel">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <small class="text-muted d-block">MDD</small>
+                                <strong class="text-danger">-2.20%</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted d-block">Close Loc</small>
+                                <strong class="text-success">
+                                    0.54
+                                </strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted d-block">Churn</small>
+                                <strong class="text-danger">
+                                    0.51
+                                </strong>
+                            </div>
+                        </div>
+                        <div class="row text-center mt-2">
+                            <div class="col-4">
+                                <small class="text-muted d-block">Slope120</small>
+                                <strong class="text-success">
+                                    17.63
+                                </strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted d-block">Curv120</small>
+                                <strong class="text-success">
+                                    0.19
+                                </strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted d-block">Z180</small>
+                                <strong>1.85</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 레이더 차트 탭 -->
+                    <div class="tab-pane fade" id="interp-radar" role="tabpanel">
+                        <div style="max-width: 320px; margin: 0 auto;">
+                            <canvas id="interpRadarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 투자자 가이드 -->
+                <div class="alert alert-light py-2 mb-0">
+                    <small>
+                        <i class="bi bi-signpost-split"></i> <strong>가이드</strong>: 방향 없는 장. 포지션 축소 또는 관망.
+                    </small>
+                </div>
+
+                <!-- 상세 분석 (접기) -->
+                <div class="mt-2">
+                    <a class="text-muted small" data-bs-toggle="collapse" href="#interpretDetail" role="button">
+                        <i class="bi bi-chevron-down"></i> 상세 분석 보기
+                    </a>
+                    <div class="collapse mt-2" id="interpretDetail">
+                        <div class="card card-body bg-light small">
+                            MDD -2.20%로 장중 하방 압력이 강했습니다. Close Location 0.54로 중간 수준(54%)에서 마감했습니다. Churn 0.51로 극단적 왕복이 발생하여 방향 베팅이 매우 어려운 장이었습니다. 장중 변동폭 21.63pt 중 11.78pt를 반등하여 변동폭의 54%를 회복했습니다. 중기 추세는 &#39;상승 가속&#39; 상태로 추세 추종 전략이 유효합니다.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ML 국면 예측 (Phase 3, basic 이상) -->
+
+
+<!-- Churn 기반 조정 예측 (admin 전용) -->
+
+
+<!-- 개별 종목 Churn 분석 (admin 전용) -->
+
+
+<!-- 투자자 수급 현황 (basic 이상) -->
+
+
+<!-- 포트폴리오 상관관계 (basic 이상) -->
+
+
+<!-- 모의투자 거래 성과 (admin 전용) -->
+
+
+<!-- 시장 국면 판단 (새로운 카드 구조) -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-speedometer"></i> 시장 국면 판단</h5>
+            </div>
+            <div class="card-body">
+                <!-- 탭 네비게이션 -->
+                <ul class="nav nav-tabs" id="marketPhaseTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="kospi-tab" data-bs-toggle="tab"
+                                data-bs-target="#kospi-phase" type="button" role="tab">
+                            KOSPI
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="kospi200-tab" data-bs-toggle="tab"
+                                data-bs-target="#kospi200-phase" type="button" role="tab">
+                            KOSPI200
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="kosdaq-tab" data-bs-toggle="tab"
+                                data-bs-target="#kosdaq-phase" type="button" role="tab">
+                            KOSDAQ
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- 탭 컨텐츠 -->
+                <div class="tab-content mt-3" id="marketPhaseTabContent">
+                    <!-- KOSPI 탭 -->
+                    <div class="tab-pane fade show active" id="kospi-phase" role="tabpanel">
+                        <div class="row">
+                            <!-- 좌측: 도넛 차트 -->
+                            <div class="col-5 text-center">
+                                <div style="max-width: 180px; margin: 0 auto; position: relative;">
+                                    <canvas id="kospiPhaseChart"></canvas>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                        <small class="text-muted d-block">EScore</small>
+                                        <strong class="fs-5">57.1</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 우측: 숫자 -->
+                            <div class="col-7">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-success">강세</span> <small class="text-muted">(≥70)</small></span>
+                                    <strong>362 <small class="text-muted">39.6%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-success" style="width: 39.6%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-warning text-dark">중립</span> <small class="text-muted">(40~70)</small></span>
+                                    <strong>290 <small class="text-muted">31.8%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-warning" style="width: 31.8%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-danger">약세</span> <small class="text-muted">(<40)</small></span>
+                                    <strong>249 <small class="text-muted">27.3%</small></strong>
+                                </div>
+                                <div class="progress mb-3" style="height: 8px;">
+                                    <div class="progress-bar bg-danger" style="width: 27.3%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 시장 상태 텍스트 (전 종목 등락 비율 기반) -->
+                        <div class="alert alert-primary text-center py-2 mb-2">
+                            
+                                <span class="phase-badge bg-success">강세장</span>
+                            
+                            <small class="d-block mt-1 text-muted">
+                                (상승 79.2% / 하락 17.4%)
+                            </small>
+                        </div>
+                        <!-- 주도 업종 표시 -->
+                        <div class="d-flex justify-content-between small mt-3">
+                            <div>
+                                <i class="bi bi-arrow-up-circle text-success"></i> 강세 주도 업종:
+                                
+                                    <strong>백화점과일반상점</strong> (유통/소비재)
+                                
+                            </div>
+                            <div>
+                                <i class="bi bi-arrow-down-circle text-danger"></i> 약세 주도 업종:
+                                
+                                    <strong>종이와목재</strong> (기타)
+                                
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KOSPI200 탭 (시가총액 상위 200개 KOSPI 종목) -->
+                    <div class="tab-pane fade" id="kospi200-phase" role="tabpanel">
+                        <div class="row">
+                            <div class="col-5 text-center">
+                                <div style="max-width: 180px; margin: 0 auto; position: relative;">
+                                    <canvas id="kospi200PhaseChart"></canvas>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                        <small class="text-muted d-block">EScore</small>
+                                        <strong class="fs-5">70.3</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-7">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-success">강세</span> <small class="text-muted">(≥70)</small></span>
+                                    <strong>100 <small class="text-muted">50.3%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-success" style="width: 50.3%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-warning text-dark">중립</span> <small class="text-muted">(40~70)</small></span>
+                                    <strong>72 <small class="text-muted">36.2%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-warning" style="width: 36.2%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-danger">약세</span> <small class="text-muted">(<40)</small></span>
+                                    <strong>23 <small class="text-muted">11.6%</small></strong>
+                                </div>
+                                <div class="progress mb-3" style="height: 8px;">
+                                    <div class="progress-bar bg-danger" style="width: 11.6%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 시장 상태 텍스트 (전 종목 등락 비율 기반) -->
+                        <div class="alert alert-primary text-center py-2 mb-2">
+                            
+                                <span class="phase-badge bg-success">강세장</span>
+                            
+                            <small class="d-block mt-1 text-muted">
+                                (상승 74.9% / 하락 22.6%)
+                            </small>
+                        </div>
+                        <div class="alert alert-light text-center py-1 mb-0">
+                            <small class="text-muted">시가총액 상위 200개 KOSPI 종목 기준</small>
+                        </div>
+                    </div>
+
+                    <!-- KOSDAQ 탭 (동일 구조) -->
+                    <div class="tab-pane fade" id="kosdaq-phase" role="tabpanel">
+                        <div class="row">
+                            <div class="col-5 text-center">
+                                <div style="max-width: 180px; margin: 0 auto; position: relative;">
+                                    <canvas id="kosdaqPhaseChart"></canvas>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                        <small class="text-muted d-block">EScore</small>
+                                        <strong class="fs-5">47.5</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-7">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-success">강세</span> <small class="text-muted">(≥70)</small></span>
+                                    <strong>471 <small class="text-muted">28.2%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-success" style="width: 28.2%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-warning text-dark">중립</span> <small class="text-muted">(40~70)</small></span>
+                                    <strong>523 <small class="text-muted">31.3%</small></strong>
+                                </div>
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-warning" style="width: 31.3%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span><span class="badge bg-danger">약세</span> <small class="text-muted">(<40)</small></span>
+                                    <strong>609 <small class="text-muted">36.4%</small></strong>
+                                </div>
+                                <div class="progress mb-3" style="height: 8px;">
+                                    <div class="progress-bar bg-danger" style="width: 36.4%"></div>
+                                </div>
+                            </div>
+                        </div>
+                         <!-- 시장 상태 텍스트 (전 종목 등락 비율 기반) -->
+                         <div class="alert alert-primary text-center py-2 mb-2">
+                            
+                                <span class="phase-badge bg-success">강세장</span>
+                            
+                            <small class="d-block mt-1 text-muted">
+                                (상승 74.8% / 하락 21.8%)
+                            </small>
+                        </div>
+                        <!-- 주도 업종 표시 -->
+                        <div class="d-flex justify-content-between small mt-3">
+                            <div>
+                                <i class="bi bi-arrow-up-circle text-success"></i> 강세 주도 업종:
+                                
+                                    <strong>백화점과일반상점</strong> (유통/소비재)
+                                
+                            </div>
+                            <div>
+                                <i class="bi bi-arrow-down-circle text-danger"></i> 약세 주도 업종:
+                                
+                                    <strong>종이와목재</strong> (기타)
+                                
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- 섹터별 분포 & 주도 업종 -->
+<div class="row mb-4">
+    <!-- 섹터별 분포 차트 -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> 섹터별 분포</h5>
+            </div>
+            <div class="card-body" id="sectorDistributionCardBody">
+                <canvas id="sectorDistributionChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 주도 업종 현황 -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-trophy"></i> 주도 업종 Top 5 (Industry)</h5>
+            </div>
+            <div class="card-body">
+                
+                <div class="sector-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge bg-primary">1</span>
+                                백화점과일반상점
+                                <small class="text-muted">(유통/소비재)</small>
+                            </h6>
+                            <small class="text-muted">14개 종목</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success">
+                                <strong>+8.10%</strong>
+                            </div>
+                            <small class="text-muted">평균 EScore: 73.6</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sector-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge bg-primary">2</span>
+                                화장품
+                                <small class="text-muted">(유통/소비재)</small>
+                            </h6>
+                            <small class="text-muted">56개 종목</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success">
+                                <strong>+7.19%</strong>
+                            </div>
+                            <small class="text-muted">평균 EScore: 33.2</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sector-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge bg-primary">3</span>
+                                무역회사와판매업체
+                                <small class="text-muted">(기타)</small>
+                            </h6>
+                            <small class="text-muted">6개 종목</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success">
+                                <strong>+5.84%</strong>
+                            </div>
+                            <small class="text-muted">평균 EScore: 66.7</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sector-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge bg-primary">4</span>
+                                반도체와반도체장비
+                                <small class="text-muted">(반도체)</small>
+                            </h6>
+                            <small class="text-muted">155개 종목</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success">
+                                <strong>+5.82%</strong>
+                            </div>
+                            <small class="text-muted">평균 EScore: 67.0</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sector-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge bg-primary">5</span>
+                                조선
+                                <small class="text-muted">(기계/장비)</small>
+                            </h6>
+                            <small class="text-muted">25개 종목</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success">
+                                <strong>+4.42%</strong>
+                            </div>
+                            <small class="text-muted">평균 EScore: 40.0</small>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+<!-- 주도 팩터 요약 (v2.2) - 로그인 시에만 표시 -->
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up"></i> 주도 팩터 분석 (ML 확정 신호 기준)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <h6 class="text-muted mb-2">현재 시장 주도 팩터</h6>
+                    <span class="badge
+                        bg-warning text-dark
+                        "
+                        style="font-size: 1.5rem; padding: 12px 24px;">
+                        
+                            🚀 모멘텀 (Momentum)
+                        
+                    </span>
+                </div>
+
+                <div class="row">
+                    <!-- Value Factor -->
+                    <div class="col-md-4 mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <i class="bi bi-cash-stack text-primary"></i>
+                                <strong class="ms-2">밸류 팩터</strong>
+                            </div>
+                            <span class="badge bg-primary">39.6점</span>
+                        </div>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-primary"
+                                 role="progressbar"
+                                 style="width: 39.6%"
+                                 aria-valuenow="39.6"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                40%
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1 d-block">PER, PBR, PSR, EV/EBITDA 기반</small>
+                    </div>
+
+                    <!-- Quality Factor -->
+                    <div class="col-md-4 mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <i class="bi bi-star-fill text-success"></i>
+                                <strong class="ms-2">퀄리티 팩터</strong>
+                            </div>
+                            <span class="badge bg-success">34.7점</span>
+                        </div>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-success"
+                                 role="progressbar"
+                                 style="width: 34.7%"
+                                 aria-valuenow="34.7"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                35%
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1 d-block">ROE, ROA, OCF_Ratio 기반</small>
+                    </div>
+
+                    <!-- Momentum Factor -->
+                    <div class="col-md-4 mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <i class="bi bi-graph-up-arrow text-warning"></i>
+                                <strong class="ms-2">모멘텀 팩터</strong>
+                            </div>
+                            <span class="badge bg-warning text-dark">85.3점</span>
+                        </div>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-warning"
+                                 role="progressbar"
+                                 style="width: 85.3%"
+                                 aria-valuenow="85.3"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                85%
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1 d-block">Trend Score (Slope, Curv, Z180) 기반</small>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="bi bi-info-circle"></i>
+                    <small>
+                        <strong>팁:</strong> 주도 팩터는 ML 확정 신호(CONFIRMED) 종목들의 팩터 평균을 기반으로 계산됩니다.
+                        높은 점수를 보이는 팩터가 현재 시장에서 우수한 성과를 내는 투자 스타일을 나타냅니다.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 조건충족 종목 & 제외 종목 요약 - 로그인 시에만 표시 -->
+<div class="row mb-4">
+    <!-- 조건충족 종목 요약 -->
+    <div class="col-md-6">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-star"></i> 조건충족 종목 요약</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-3">
+                        <div class="stat-number text-success">17</div>
+                        <div class="stat-label">전체</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="stat-number text-primary">1</div>
+                        <div class="stat-label">핵심</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="stat-number text-info">10</div>
+                        <div class="stat-label">중형</div>
+                    </div>
+                    <div class="col-3">
+                        <div class="stat-number text-secondary">6</div>
+                        <div class="stat-label">소형</div>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/stock/recommendations/" class="btn btn-success">
+                        <i class="bi bi-arrow-right-circle"></i> 상세 보기
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 제외 종목 요약 -->
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-x-circle"></i> 제외 종목 요약</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="stat-number text-danger">0</div>
+                        <div class="stat-label">전체</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-number text-warning">0</div>
+                        <div class="stat-label">STOP</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-number text-secondary">0</div>
+                        <div class="stat-label">EXIT_ALL</div>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/stock/recommendations/excluded" class="btn btn-danger">
+                        <i class="bi bi-arrow-right-circle"></i> 상세 보기
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- 용어 설명 -->
+<div class="glossary">
+    <h5 class="mb-4"><i class="bi bi-book"></i> 용어 설명</h5>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="glossary-item">
+                <span class="glossary-term">※ WSMA120 (Weighted Simple Moving Average 120)</span>
+                <p class="mb-0 small text-muted">
+                    최근 120일간의 가중 이동평균선입니다. 과거 60일에 1.0배, 최근 60일에 1.5배 가중치를 부여하여 계산합니다.
+                </p>
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">※ Slope120</span>
+                <p class="mb-0 small text-muted">
+                    WSMA120의 5일 변화량으로, 추세의 방향과 강도를 나타냅니다. 양수면 상승 추세, 음수면 하락 추세입니다.
+                </p>
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">※ Curv120</span>
+                <p class="mb-0 small text-muted">
+                    Slope120의 변화량(가속도)입니다. 양수면 상승 가속, 음수면 상승 둔화 또는 하락 가속을 의미합니다.
+                </p>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="glossary-item">
+                <span class="glossary-term">※ Z180 (표준화 이격도)</span>
+                <p class="mb-0 small text-muted">
+                    현재가가 WSMA180에서 얼마나 벗어났는지를 ATR20으로 표준화한 값입니다.
+                    -2 ~ +2 범위가 정상, +2 초과는 과열, -2 미만은 침체를 의미합니다.
+                </p>
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">※ EScore (Evaluation Score)</span>
+                <p class="mb-0 small text-muted">
+                    종합 기술적 점수(0~100점)로, Align(30점) + Z180(35점) + Momentum(35점)으로 계산됩니다.
+                    70점 이상이 강세, 40점 미만이 약세입니다.
+                </p>
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">※ 주도 업종 (Leading Industry)</span>
+                <p class="mb-0 small text-muted">
+                    평균 수익률과 EScore가 높은 업종입니다. IT, 헬스케어 등의 Sector가 아닌 반도체, 바이오 등의 Industry 레벨로 표시됩니다.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-5 py-4 bg-light border-top">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-info-circle"></i> 나딱구 주식 공부방
+                    </p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p class="text-muted mb-0">
+                        <small>
+                            마지막 업데이트:
+                            
+                                2026-04-25 08:32
+                            
+                        </small>
+                    </p>
+                </div>
+                <div class="col-12 text-center mt-3">
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-envelope"></i> 피드백: <a href="mailto:gongnim@gmail.com" class="text-muted">gongnim@gmail.com</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery 3.x (optional, for compatibility) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <!-- Main JavaScript -->
+    <script src="/stock/static/js/main.js"></script>
+
+    <!-- Bootstrap Tooltip 초기화 -->
+    <script>
+        // Bootstrap tooltip 전역 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+    </script>
+
+    
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Global variables to store chart instances
+        var kospiEscoreChartInstance;
+        var kosdaqEscoreChartInstance;
+        // --- 1. 시장 지수 추세 차트 (Market Index Trend Chart) ---
+        var marketIndexTrendCtx = document.getElementById('marketIndexTrendChart');
+        if (marketIndexTrendCtx) {
+            var marketIndexTrendData = {"KOSDAQ": [{"close_price": 1151.99, "trade_date": "2026-02-23"}, {"close_price": 1165.0, "trade_date": "2026-02-24"}, {"close_price": 1165.25, "trade_date": "2026-02-25"}, {"close_price": 1188.15, "trade_date": "2026-02-26"}, {"close_price": 1192.78, "trade_date": "2026-02-27"}, {"close_price": 1137.699951171875, "trade_date": "2026-03-03"}, {"close_price": 978.4400024414062, "trade_date": "2026-03-04"}, {"close_price": 1116.4100341796875, "trade_date": "2026-03-05"}, {"close_price": 1154.6700439453125, "trade_date": "2026-03-06"}, {"close_price": 1102.280029296875, "trade_date": "2026-03-09"}, {"close_price": 1137.6800537109375, "trade_date": "2026-03-10"}, {"close_price": 1136.8299560546875, "trade_date": "2026-03-11"}, {"close_price": 1148.4000244140625, "trade_date": "2026-03-12"}, {"close_price": 1152.9599609375, "trade_date": "2026-03-13"}, {"close_price": 1138.2900390625, "trade_date": "2026-03-16"}, {"close_price": 1136.93994140625, "trade_date": "2026-03-17"}, {"close_price": 1164.3800048828125, "trade_date": "2026-03-18"}, {"close_price": 1143.47998046875, "trade_date": "2026-03-19"}, {"close_price": 1161.52001953125, "trade_date": "2026-03-20"}, {"close_price": 1096.8900146484375, "trade_date": "2026-03-23"}, {"close_price": 1121.43994140625, "trade_date": "2026-03-24"}, {"close_price": 1159.550048828125, "trade_date": "2026-03-25"}, {"close_price": 1136.6400146484375, "trade_date": "2026-03-26"}, {"close_price": 1141.510009765625, "trade_date": "2026-03-27"}, {"close_price": 1107.050048828125, "trade_date": "2026-03-30"}, {"close_price": 1052.3900146484375, "trade_date": "2026-03-31"}, {"close_price": 1116.1800537109375, "trade_date": "2026-04-01"}, {"close_price": 1056.3399658203125, "trade_date": "2026-04-02"}, {"close_price": 1063.75, "trade_date": "2026-04-03"}, {"close_price": 1047.3699951171875, "trade_date": "2026-04-06"}, {"close_price": 1036.72998046875, "trade_date": "2026-04-07"}, {"close_price": 1089.8499755859375, "trade_date": "2026-04-08"}, {"close_price": 1076.0, "trade_date": "2026-04-09"}, {"close_price": 1093.6300048828125, "trade_date": "2026-04-10"}, {"close_price": 1099.8399658203125, "trade_date": "2026-04-13"}, {"close_price": 1121.8800048828125, "trade_date": "2026-04-14"}, {"close_price": 1152.4300537109375, "trade_date": "2026-04-15"}, {"close_price": 1162.969970703125, "trade_date": "2026-04-16"}, {"close_price": 1170.0400390625, "trade_date": "2026-04-17"}, {"close_price": 1178.0, "trade_date": "2026-04-20"}, {"close_price": 1179.030029296875, "trade_date": "2026-04-21"}, {"close_price": 1181.1199951171875, "trade_date": "2026-04-22"}, {"close_price": 1174.31005859375, "trade_date": "2026-04-23"}, {"close_price": 1203.8399658203125, "trade_date": "2026-04-24"}], "KOSPI": [{"close_price": 5846.09, "trade_date": "2026-02-23"}, {"close_price": 5969.64, "trade_date": "2026-02-24"}, {"close_price": 6083.86, "trade_date": "2026-02-25"}, {"close_price": 6307.27, "trade_date": "2026-02-26"}, {"close_price": 6244.13, "trade_date": "2026-02-27"}, {"close_price": 5791.91015625, "trade_date": "2026-03-03"}, {"close_price": 5093.5400390625, "trade_date": "2026-03-04"}, {"close_price": 5583.89990234375, "trade_date": "2026-03-05"}, {"close_price": 5584.8701171875, "trade_date": "2026-03-06"}, {"close_price": 5251.8701171875, "trade_date": "2026-03-09"}, {"close_price": 5532.58984375, "trade_date": "2026-03-10"}, {"close_price": 5609.9501953125, "trade_date": "2026-03-11"}, {"close_price": 5583.25, "trade_date": "2026-03-12"}, {"close_price": 5487.240234375, "trade_date": "2026-03-13"}, {"close_price": 5549.85009765625, "trade_date": "2026-03-16"}, {"close_price": 5640.47998046875, "trade_date": "2026-03-17"}, {"close_price": 5925.02978515625, "trade_date": "2026-03-18"}, {"close_price": 5763.22021484375, "trade_date": "2026-03-19"}, {"close_price": 5781.2001953125, "trade_date": "2026-03-20"}, {"close_price": 5405.75, "trade_date": "2026-03-23"}, {"close_price": 5553.919921875, "trade_date": "2026-03-24"}, {"close_price": 5642.2099609375, "trade_date": "2026-03-25"}, {"close_price": 5460.4599609375, "trade_date": "2026-03-26"}, {"close_price": 5438.8701171875, "trade_date": "2026-03-27"}, {"close_price": 5277.2998046875, "trade_date": "2026-03-30"}, {"close_price": 5052.4599609375, "trade_date": "2026-03-31"}, {"close_price": 5478.7001953125, "trade_date": "2026-04-01"}, {"close_price": 5234.0498046875, "trade_date": "2026-04-02"}, {"close_price": 5377.2998046875, "trade_date": "2026-04-03"}, {"close_price": 5450.330078125, "trade_date": "2026-04-06"}, {"close_price": 5494.77978515625, "trade_date": "2026-04-07"}, {"close_price": 5872.33984375, "trade_date": "2026-04-08"}, {"close_price": 5778.009765625, "trade_date": "2026-04-09"}, {"close_price": 5858.8701171875, "trade_date": "2026-04-10"}, {"close_price": 5808.6201171875, "trade_date": "2026-04-13"}, {"close_price": 5967.75, "trade_date": "2026-04-14"}, {"close_price": 6091.39013671875, "trade_date": "2026-04-15"}, {"close_price": 6226.0498046875, "trade_date": "2026-04-16"}, {"close_price": 6191.919921875, "trade_date": "2026-04-17"}, {"close_price": 6255.2001953125, "trade_date": "2026-04-20"}, {"close_price": 6388.47021484375, "trade_date": "2026-04-21"}, {"close_price": 6417.93017578125, "trade_date": "2026-04-22"}, {"close_price": 6475.81005859375, "trade_date": "2026-04-23"}, {"close_price": 6475.6298828125, "trade_date": "2026-04-24"}], "KOSPI200": [{"close_price": 865.49, "trade_date": "2026-02-23"}, {"close_price": 886.88, "trade_date": "2026-02-24"}, {"close_price": 903.83, "trade_date": "2026-02-25"}, {"close_price": 944.02, "trade_date": "2026-02-26"}, {"close_price": 933.34, "trade_date": "2026-02-27"}, {"close_price": 859.4000244140625, "trade_date": "2026-03-03"}, {"close_price": 756.7899780273438, "trade_date": "2026-03-04"}, {"close_price": 831.219970703125, "trade_date": "2026-03-05"}, {"close_price": 828.8300170898438, "trade_date": "2026-03-06"}, {"close_price": 775.3099975585938, "trade_date": "2026-03-09"}, {"close_price": 823.02001953125, "trade_date": "2026-03-10"}, {"close_price": 834.0499877929688, "trade_date": "2026-03-11"}, {"close_price": 827.510009765625, "trade_date": "2026-03-12"}, {"close_price": 812.9299926757812, "trade_date": "2026-03-13"}, {"close_price": 826.8300170898438, "trade_date": "2026-03-16"}, {"close_price": 840.8900146484375, "trade_date": "2026-03-17"}, {"close_price": 888.5700073242188, "trade_date": "2026-03-18"}, {"close_price": 862.3699951171875, "trade_date": "2026-03-19"}, {"close_price": 862.5, "trade_date": "2026-03-20"}, {"close_price": 804.8599853515625, "trade_date": "2026-03-23"}, {"close_price": 827.6400146484375, "trade_date": "2026-03-24"}, {"close_price": 838.7000122070312, "trade_date": "2026-03-25"}, {"close_price": 808.8900146484375, "trade_date": "2026-03-26"}, {"close_price": 805.1900024414062, "trade_date": "2026-03-27"}, {"close_price": 780.3200073242188, "trade_date": "2026-03-30"}, {"close_price": 744.5700073242188, "trade_date": "2026-03-31"}, {"close_price": 813.8400268554688, "trade_date": "2026-04-01"}, {"close_price": 774.6300048828125, "trade_date": "2026-04-02"}, {"close_price": 798.3200073242188, "trade_date": "2026-04-03"}, {"close_price": 811.8400268554688, "trade_date": "2026-04-06"}, {"close_price": 821.0999755859375, "trade_date": "2026-04-07"}, {"close_price": 882.8099975585938, "trade_date": "2026-04-08"}, {"close_price": 865.75, "trade_date": "2026-04-09"}, {"close_price": 878.780029296875, "trade_date": "2026-04-10"}, {"close_price": 870.780029296875, "trade_date": "2026-04-13"}, {"close_price": 897.0, "trade_date": "2026-04-14"}, {"close_price": 916.5999755859375, "trade_date": "2026-04-15"}, {"close_price": 937.8699951171875, "trade_date": "2026-04-16"}, {"close_price": 931.4099731445312, "trade_date": "2026-04-17"}, {"close_price": 941.5999755859375, "trade_date": "2026-04-20"}, {"close_price": 962.260009765625, "trade_date": "2026-04-21"}, {"close_price": 964.52001953125, "trade_date": "2026-04-22"}, {"close_price": 975.6199951171875, "trade_date": "2026-04-23"}, {"close_price": 971.8699951171875, "trade_date": "2026-04-24"}]}; // Flask에서 전달받는 데이터
+
+            if (marketIndexTrendData && Object.keys(marketIndexTrendData).length > 0) {
+                var labels = [];
+                var datasets = [];
+                var colors = [
+                    'rgb(255, 99, 132)', // KOSDAQ
+                    'rgb(54, 162, 235)', // KOSPI
+                    'rgb(75, 192, 192)'  // KOSPI200 (if any)
+                ];
+                var colorIndex = 0;
+
+                // 모든 지수의 날짜를 통합하여 x축 라벨 생성
+                var allDates = new Set();
+                for (var indexCode in marketIndexTrendData) {
+                    marketIndexTrendData[indexCode].forEach(item => allDates.add(item.trade_date));
+                }
+                labels = Array.from(allDates).sort();
+
+                // Y축 범위 계산을 위한 모든 데이터값 수집
+                var allValues = [];
+                for (var indexCode in marketIndexTrendData) {
+                    if (marketIndexTrendData.hasOwnProperty(indexCode)) {
+                        var dataMap = new Map(marketIndexTrendData[indexCode].map(item => [item.trade_date, item.close_price]));
+                        var data = labels.map(date => dataMap.has(date) ? dataMap.get(date) : null); // 데이터 없는 날짜는 null 처리
+
+                        // null이 아닌 값만 수집
+                        data.forEach(val => { if (val !== null) allValues.push(val); });
+
+                        datasets.push({
+                            label: indexCode,
+                            data: data,
+                            borderColor: colors[colorIndex % colors.length],
+                            backgroundColor: colors[colorIndex % colors.length],
+                            fill: false,
+                            tension: 0.1,
+                            spanGaps: true // 데이터 없는 날짜는 선으로 연결
+                        });
+                        colorIndex++;
+                    }
+                }
+
+                // Y축 범위 계산 (데이터 최소/최대값에 여유 공간 추가)
+                var yMin = Math.min(...allValues);
+                var yMax = Math.max(...allValues);
+                var yPadding = (yMax - yMin) * 0.1; // 10% 여유 공간
+
+                console.log('Market Index Chart - Data range:', yMin, '~', yMax, 'Values count:', allValues.length);
+
+                new Chart(marketIndexTrendCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '주요 시장 지수 추이'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'category',
+                                title: {
+                                    display: true,
+                                    text: '날짜'
+                                },
+                                ticks: {
+                                    maxTicksLimit: 10,
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                beginAtZero: false,
+                                min: yMin - yPadding,
+                                max: yMax + yPadding,
+                                title: {
+                                    display: true,
+                                    text: '지수'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toFixed(2);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                marketIndexTrendCtx.parentNode.innerHTML = '<div class="chart-placeholder text-center">' +
+                    '<i class="bi bi-exclamation-circle" style="font-size: 4rem;"></i>' +
+                    '<div class="mt-3">시장 지수 추이 데이터를 불러올 수 없습니다.</div>' +
+                    '</div>';
+            }
+        }
+
+
+        // --- 2. 섹터별 분포 차트 (Sector Distribution Chart) ---
+        var sectorDistributionCtx = document.getElementById('sectorDistributionChart');
+        if (sectorDistributionCtx) {
+            var sectorDistributionData = [{"market_cap_ratio": 16.9, "sector": "\uae30\ud0c0", "stock_count": 473}, {"market_cap_ratio": 11.7, "sector": "\uc720\ud1b5/\uc18c\ube44\uc7ac", "stock_count": 327}, {"market_cap_ratio": 10.6, "sector": "\uc804\uae30\uc804\uc790", "stock_count": 298}, {"market_cap_ratio": 7.8, "sector": "IT/\uc18c\ud504\ud2b8\uc6e8\uc5b4", "stock_count": 220}, {"market_cap_ratio": 7.6, "sector": "\uae30\uacc4/\uc7a5\ube44", "stock_count": 214}, {"market_cap_ratio": 7.3, "sector": "\ubc14\uc774\uc624/\uc81c\uc57d", "stock_count": 204}, {"market_cap_ratio": 6.7, "sector": "\uc790\ub3d9\ucc28/\uc6b4\uc1a1", "stock_count": 189}, {"market_cap_ratio": 6.1, "sector": "\uae08\uc735", "stock_count": 172}, {"market_cap_ratio": 5.8, "sector": "\ubc18\ub3c4\uccb4", "stock_count": 163}, {"market_cap_ratio": 4.8, "sector": "\ud654\ud559", "stock_count": 135}]; // Flask에서 전달받는 데이터
+
+            if (sectorDistributionData && sectorDistributionData.length > 0) {
+                var labels = sectorDistributionData.map(item => item.sector);
+                var data = sectorDistributionData.map(item => item.market_cap_ratio);
+                var backgroundColors = [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#8D5F90', '#4CAF50', '#FFCDD2'
+                ];
+
+                new Chart(sectorDistributionCtx, {
+                    type: 'doughnut', // 도넛 차트 사용
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: backgroundColors,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '섹터별 시가총액 비중'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(tooltipItem) {
+                                        return tooltipItem.label + ': ' + tooltipItem.raw + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                sectorDistributionCtx.parentNode.innerHTML = '<div class="chart-placeholder text-center">' +
+                    '<i class="bi bi-exclamation-circle" style="font-size: 4rem;"></i>' +
+                    '<div class="mt-3">섹터별 분포 데이터를 불러올 수 없습니다.</div>' +
+                    '</div>';
+            }
+        }
+
+
+
+
+
+        
+
+
+                    });
+
+        // --- 레이더 차트: 시장 해석 지표 ---
+        
+        var radarCtx = document.getElementById('interpRadarChart');
+        if (radarCtx) {
+            var mddNorm = Math.min(Math.abs(-2.2033) / 3 * 100, 100);
+            var clocNorm = 0.5446 * 100;
+            var churnNorm = Math.min(0.5119 / 0.6 * 100, 100);
+            var slopeNorm = Math.min(Math.max((17.6279 + 50) / 100 * 100, 0), 100);
+            var z180Norm = Math.min(Math.max((1.8529 + 3) / 6 * 100, 0), 100);
+            var curvNorm = Math.min(Math.max((0.1915 + 5) / 10 * 100, 0), 100);
+
+            new Chart(radarCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['하방압력(MDD)', '종가위치(C.Loc)', 'Churn', '추세(Slope)', '이격도(Z180)', '가속도(Curv)'],
+                    datasets: [{
+                        label: '오늘',
+                        data: [mddNorm, clocNorm, churnNorm, slopeNorm, z180Norm, curvNorm],
+                        backgroundColor: 'rgba(54, 162, 235, 0.15)',
+                        borderColor: 'rgba(54, 162, 235, 0.8)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true, max: 100,
+                            ticks: { display: false, stepSize: 25 },
+                            pointLabels: { font: { size: 11 } },
+                            grid: { color: 'rgba(0,0,0,0.08)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    var raw = [
+                                        '-2.20%',
+                                        '0.5446',
+                                        '0.5119',
+                                        '17.63',
+                                        '1.85',
+                                        '0.19'
+                                    ];
+                                    return ctx.label + ': ' + raw[ctx.dataIndex];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+
+        // --- 도넛 차트: 시장 국면 ---
+        function createPhaseDonut(canvasId, strong, neutral, weak) {
+            var ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['강세', '중립', '약세'],
+                    datasets: [{
+                        data: [strong, neutral, weak],
+                        backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+                        borderWidth: 1, hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true, cutout: '65%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                                    var pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
+                                    return ctx.label + ': ' + ctx.raw + ' (' + pct + '%)';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        createPhaseDonut('kospiPhaseChart', 362, 290, 249);
+        createPhaseDonut('kospi200PhaseChart', 100, 72, 23);
+        createPhaseDonut('kosdaqPhaseChart', 471, 523, 609);
+
+        // --- 시간대별 투자자 수급 가로 막대그래프 (관리자 전용) ---
+        
+
+                </script>
+
+
+</body>
+</html>

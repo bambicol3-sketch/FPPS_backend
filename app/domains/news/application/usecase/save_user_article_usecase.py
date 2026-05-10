@@ -44,11 +44,20 @@ class SaveUserArticleUseCase:
 
         # 3. 기사 본문 스크래핑 + JSONB 저장 (PostgreSQL 비정형 데이터)
         try:
-            content = await self._content_provider.fetch_content(request.link)
-            await self._content_repo.save(
+            article_payload = await self._content_provider.fetch_article(request.link)
+            if not isinstance(article_payload, dict):
+                article_payload = {"scraped_content": str(article_payload or "")}
+            if request.snippet:
+                article_payload["snippet"] = request.snippet
+            article_payload["request"] = {
+                "title": request.title,
+                "link": request.link,
+                "source": request.source,
+                "published_at": request.published_at,
+            }
+            await self._content_repo.save_payload(
                 user_saved_article_id=saved.article_id,
-                content=content,
-                snippet=request.snippet,
+                payload=article_payload,
             )
         except Exception as e:
             # JSONB 저장 실패 시 메타데이터 롤백 → 일관성 유지

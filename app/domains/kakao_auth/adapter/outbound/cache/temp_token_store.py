@@ -15,7 +15,8 @@ class TempTokenStore(TempTokenStorePort):
 
     async def save(self, temp_token: TempToken) -> None:
         data = json.dumps({
-            "kakao_access_token": temp_token.kakao_access_token,
+            "provider": "kakao",
+            "oauth_access_token": temp_token.kakao_access_token,
             "nickname": temp_token.nickname,
             "email": temp_token.email,
         })
@@ -32,7 +33,7 @@ class TempTokenStore(TempTokenStorePort):
         parsed = json.loads(raw)
         return TempToken(
             token=token,
-            kakao_access_token=parsed["kakao_access_token"],
+            kakao_access_token=parsed.get("oauth_access_token") or parsed.get("kakao_access_token", ""),
             nickname=parsed.get("nickname"),
             email=parsed.get("email"),
             ttl_seconds=0,

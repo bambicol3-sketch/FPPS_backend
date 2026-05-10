@@ -18,10 +18,18 @@ class TempTokenCacheImpl(TempTokenPort):
         if not raw:
             return None
         parsed = json.loads(raw)
+        provider = parsed.get("provider", "kakao")
+        oauth_access_token = (
+            parsed.get("oauth_access_token")
+            or parsed.get("kakao_access_token")
+            or parsed.get("google_access_token")
+            or ""
+        )
         return TempTokenData(
-            kakao_access_token=parsed["kakao_access_token"],
+            oauth_access_token=oauth_access_token,
             nickname=parsed.get("nickname"),
             email=parsed.get("email"),
+            provider=provider,
         )
 
     async def delete_by_token(self, token: str) -> None:

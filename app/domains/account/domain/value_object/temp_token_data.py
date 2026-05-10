@@ -4,6 +4,7 @@ from typing import Optional
 
 @dataclass
 class TempTokenData:
-    kakao_access_token: str
+    oauth_access_token: str
     nickname: Optional[str]
     email: Optional[str]
+    provider: str = "kakao"

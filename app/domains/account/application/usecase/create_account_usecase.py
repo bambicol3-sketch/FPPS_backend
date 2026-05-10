@@ -31,10 +31,16 @@ class CreateAccountUseCase:
 
         await self._temp_token_port.delete_by_token(temp_token_value)
 
-        await self._account_token_cache_port.save_kakao_token(
-            account_id=saved_account.account_id,
-            kakao_access_token=temp_token_data.kakao_access_token,
-        )
+        if temp_token_data.provider == "google":
+            await self._account_token_cache_port.save_google_token(
+                account_id=saved_account.account_id,
+                google_access_token=temp_token_data.oauth_access_token,
+            )
+        else:
+            await self._account_token_cache_port.save_kakao_token(
+                account_id=saved_account.account_id,
+                kakao_access_token=temp_token_data.oauth_access_token,
+            )
 
         user_token = await self._account_token_cache_port.issue_user_token(account_id=saved_account.account_id)
 

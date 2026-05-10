@@ -5,6 +5,7 @@ import redis.asyncio as aioredis
 from app.domains.account.application.port.out.account_token_cache_port import AccountTokenCachePort
 
 KAKAO_TOKEN_KEY_PREFIX = "kakao_token:"
+GOOGLE_TOKEN_KEY_PREFIX = "google_token:"
 SESSION_KEY_PREFIX = "session:"
 
 
@@ -18,6 +19,13 @@ class AccountTokenCacheImpl(AccountTokenCachePort):
             f"{KAKAO_TOKEN_KEY_PREFIX}{account_id}",
             self._user_token_ttl,
             kakao_access_token,
+        )
+
+    async def save_google_token(self, account_id: int, google_access_token: str) -> None:
+        await self._redis.setex(
+            f"{GOOGLE_TOKEN_KEY_PREFIX}{account_id}",
+            self._user_token_ttl,
+            google_access_token,
         )
 
     async def issue_user_token(self, account_id: int) -> str:
