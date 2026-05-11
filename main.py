@@ -39,6 +39,7 @@ import app.domains.disclosure.infrastructure.orm.collection_job_orm  # noqa: F40
 import app.domains.disclosure.infrastructure.orm.collection_job_item_orm  # noqa: F401
 import app.domains.disclosure.infrastructure.orm.rag_document_chunk_orm  # noqa: F401
 import app.domains.agent.infrastructure.orm.integrated_analysis_orm  # noqa: F401
+import app.domains.template_rag.infrastructure.orm.template_chunk_orm  # noqa: F401
 import app.domains.study_room.infrastructure.orm.dashboard_snapshot_orm  # noqa: F401
 import app.domains.mse_market_analysis.infrastructure.orm.market_analysis_snapshot_orm  # noqa: F401
 import app.domains.mse_sectors.infrastructure.orm.sectors_snapshot_orm  # noqa: F401
