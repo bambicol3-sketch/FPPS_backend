@@ -10,6 +10,9 @@ from app.domains.template_rag.application.port.template_chunk_repository_port im
     TemplateChunkRepositoryPort,
 )
 from app.domains.template_rag.domain.entity.template_chunk import TemplateChunk
+from app.domains.template_rag.infrastructure.mapper.template_chunk_mapper import (
+    TemplateChunkMapper,
+)
 from app.domains.template_rag.infrastructure.orm.template_chunk_orm import (
     TemplateChunkOrm,
 )
@@ -91,6 +94,72 @@ class TemplateChunkRepositoryImpl(TemplateChunkRepositoryPort):
         )
         result = await self._db.execute(stmt)
         return int(result.scalar() or 0)
+
+    async def find_template_pptx_path(
+        self,
+        form_type: str,
+        exclude_dir: Optional[str] = None,
+    ) -> Optional[str]:
+        stmt = (
+            select(TemplateChunkOrm.file_path)
+            .where(TemplateChunkOrm.form_type == form_type)
+            .where(TemplateChunkOrm.file_path.ilike("%.pptx"))
+            .distinct()
+        )
+        if exclude_dir:
+            normalized = exclude_dir.rstrip("/") + "/"
+            stmt = stmt.where(~TemplateChunkOrm.file_path.startswith(normalized))
+        result = await self._db.execute(stmt)
+        paths = [row[0] for row in result.all()]
+        if not paths:
+            return None
+
+        # '양식' / 'template' / 'form' 키워드 우선
+        keywords = ("양식", "template", "form", "Template", "Form")
+        for kw in keywords:
+            for p in paths:
+                if kw in p:
+                    return p
+        return paths[0]
+
+    async def list_by_form_type(
+        self, form_type: str, limit: Optional[int] = None
+    ) -> list[TemplateChunk]:
+        stmt = (
+            select(TemplateChunkOrm)
+            .where(TemplateChunkOrm.form_type == form_type)
+            .order_by(TemplateChunkOrm.file_path, TemplateChunkOrm.chunk_index)
+        )
+        if limit is not None and limit > 0:
+            stmt = stmt.limit(limit)
+        result = await self._db.execute(stmt)
+        return [
+            TemplateChunkMapper.to_entity(orm) for orm in result.scalars().all()
+        ]
+
+    async def identify_best_form_type(
+        self, embedding: list[float]
+    ) -> Optional[tuple[str, float]]:
+        embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
+        query = text(
+            """
+            SELECT form_type, MIN(embedding <=> CAST(:embedding AS vector)) AS dist
+            FROM template_chunks
+            WHERE embedding IS NOT NULL
+            GROUP BY form_type
+            ORDER BY dist ASC
+            LIMIT 1
+            """
+        )
+        try:
+            result = await self._db.execute(query, {"embedding": embedding_str})
+            row = result.first()
+        except Exception as e:
+            logger.warning("[TemplateRAG] identify_best_form_type failed: %s", e)
+            return None
+        if row is None:
+            return None
+        return (row.form_type, float(row.dist))
 
     async def search_similar(
         self,

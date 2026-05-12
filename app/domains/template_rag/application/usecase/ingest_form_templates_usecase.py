@@ -2,14 +2,21 @@ import logging
 import os
 from typing import Optional
 
+from app.domains.template_rag.application.cache.parse_cache import ParseCache
 from app.domains.template_rag.application.config.form_type_mapping import (
     FormTypeMapping,
     default_mapping,
 )
 from app.domains.template_rag.application.port.embedding_port import EmbeddingPort
 from app.domains.template_rag.application.port.file_reader_port import FileReaderPort
+from app.domains.template_rag.application.port.llm_json_client_port import (
+    LlmJsonClientPort,
+)
 from app.domains.template_rag.application.port.template_chunk_repository_port import (
     TemplateChunkRepositoryPort,
+)
+from app.domains.template_rag.application.service.template_parser import (
+    TemplateParser,
 )
 from app.domains.template_rag.application.request.ingest_templates_request import (
     IngestTemplatesRequest,
@@ -32,11 +39,16 @@ class IngestFormTemplatesUseCase:
         embedding: EmbeddingPort,
         file_reader: FileReaderPort,
         mapping: Optional[FormTypeMapping] = None,
+        llm_json: Optional[LlmJsonClientPort] = None,
     ):
         self._repo = repository
         self._embedding = embedding
         self._reader = file_reader
         self._mapping = mapping
+        self._llm_json = llm_json
+        self._template_parser = (
+            TemplateParser(llm_json) if llm_json else None
+        )
 
     async def execute(
         self, request: IngestTemplatesRequest
@@ -103,6 +115,39 @@ class IngestFormTemplatesUseCase:
 
         for extracted in files:
             try:
+                # === 임베딩 전 양식 파싱 (PPTX 만, 캐시 활용) ===
+                if (
+                    self._template_parser is not None
+                    and extracted.file_path.lower().endswith(".pptx")
+                ):
+                    cache_key = f"template_parse:{form_type}:{extracted.file_hash}"
+                    if ParseCache.get(cache_key) is None:
+                        try:
+                            from app.domains.template_rag.application.usecase.generate_pptx_from_template_usecase import (
+                                GeneratePptxFromTemplateUseCase as _UC,
+                            )
+                            visual = _UC._extract_template_visual_meta(
+                                extracted.file_path
+                            )
+                            parsed = await self._template_parser.parse(
+                                slides_boxes=visual["slides_boxes"],
+                                slides_shapes=visual["slides_shapes"],
+                                color_palette=visual["color_palette"],
+                            )
+                            ParseCache.set(
+                                cache_key,
+                                {"visual": visual, "parsed": parsed},
+                            )
+                            logger.info(
+                                "[Ingest] 양식 파싱 캐시 저장: %s",
+                                extracted.file_path,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "[Ingest] 양식 파싱 실패 (계속 진행): %s",
+                                e,
+                            )
+
                 existing_hash = await self._repo.get_file_hash(
                     form_type, extracted.file_path
                 )
