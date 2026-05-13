@@ -27,6 +27,18 @@ from app.domains.template_rag.application.service.raw_data_mapper import (
 from app.domains.template_rag.application.service.raw_data_parser import (
     RawDataParser,
 )
+from app.domains.template_rag.application.service.slide_refiner import (
+    SlideRefiner,
+)
+from app.domains.template_rag.application.service.generator_service import (
+    GeneratorService,
+)
+from app.domains.template_rag.application.service.discriminator_service import (
+    DiscriminatorService,
+)
+from app.domains.template_rag.application.service.style_extractor import (
+    StyleExtractor,
+)
 from app.domains.template_rag.domain.service.chunking_service import ChunkingService
 from app.domains.template_rag.domain.value_object.form_type import FormType
 
@@ -51,9 +63,15 @@ class GeneratePptxFromTemplateUseCase:
         self._output_dir = output_dir
         self._download_url_prefix = download_url_prefix
         self._llm_json = llm_json
-        self._raw_mapper = RawDataMapper(llm_json) if llm_json else None
         # 양식 파싱은 ingest 단계에서만. PPT 생성 시에는 raw 파싱만.
         self._raw_parser = RawDataParser(llm_json) if llm_json else None
+        # StyleGAN 구성요소
+        self._generator = GeneratorService(llm_json) if llm_json else None
+        self._discriminator = DiscriminatorService(llm_json) if llm_json else None
+        self._style_extractor = StyleExtractor(llm_json) if llm_json else None
+        # 폴백용 (LLM 없을 때만)
+        self._raw_mapper = RawDataMapper(llm_json) if llm_json else None
+        self._refiner = SlideRefiner(llm_json) if llm_json else None
 
     # 매칭 distance 임계값 (text-embedding-3-small cosine distance 기준)
     # 0 = 동일, 1 = 무관. 0.7 이상은 매칭 의미 없음으로 간주 → 원본 슬라이드 유지.
@@ -412,9 +430,8 @@ class GeneratePptxFromTemplateUseCase:
                 f"=== {raw.file_name} ===\n{raw.text}" for raw in raw_files
             )
 
-            if self._raw_mapper is not None:
-                # === 파싱 + 박스 명세 + 시각 메타 + 시각화 통합 ===
-                # 1) 양식 시각 메타 (위치/크기/팔레트)
+            if self._generator is not None and self._discriminator is not None:
+                # === GAN 루프 (Generator ↔ Discriminator) ===
                 visual_meta = self._extract_template_visual_meta(template_path)
                 slides_boxes = visual_meta["slides_boxes"]
                 slides_shapes = visual_meta["slides_shapes"]
@@ -439,43 +456,88 @@ class GeneratePptxFromTemplateUseCase:
                         "박스 명세만으로 매핑 진행. /api/v1/rag/jobs 로 양식 ingest 하면 다음부터 캐시 활용됨."
                     )
 
-                # 3) raw 파싱
+                # 3) raw 파싱 (content)
                 parsed_raw: dict | None = None
                 if self._raw_parser is not None:
                     parsed_raw = await self._raw_parser.parse(raw_text_concat)
 
-                # 4) 매퍼 호출 (파싱된 양식·raw 둘 다 전달)
-                llm_outputs = await self._raw_mapper.map_raw_to_box_specs(
-                    slides_boxes=slides_boxes,
-                    slides_shapes=slides_shapes,
-                    color_palette=visual_meta["color_palette"],
-                    font_palette=visual_meta["font_palette"],
-                    font_size_palette=visual_meta["font_size_palette"],
-                    raw_text=raw_text_concat,
-                    parsed_template=parsed_template,
-                    parsed_raw=parsed_raw,
-                )
-                used_count = sum(1 for s in llm_outputs if s.get("use"))
-                deco_count = sum(
-                    len(s.get("decorations", [])) for s in llm_outputs
-                )
-                logger.info(
-                    "[GeneratePptx] LLM 양식 모방+시각화: 양식 %d장 → 사용 %d장, deco %d개",
-                    len(slides_boxes), used_count, deco_count,
-                )
+                # 4) style_code 결정: ingest 캐시 hit → 재사용, miss → 이 자리에서 추출 (1회)
+                style_code: dict | None = None
+                if template_cache_key:
+                    cached_full = ParseCache.get(template_cache_key) or {}
+                    if "style_code" in cached_full:
+                        style_code = cached_full["style_code"]
+                        logger.info(
+                            "[StyleGAN] style_code 캐시 hit: mood=%s",
+                            (style_code or {}).get("mood"),
+                        )
+                if style_code is None and self._style_extractor is not None:
+                    style_code = await self._style_extractor.extract(
+                        slides_boxes=slides_boxes,
+                        slides_shapes=slides_shapes,
+                        color_palette=visual_meta["color_palette"],
+                        font_palette=visual_meta["font_palette"],
+                        font_size_palette=visual_meta["font_size_palette"],
+                    )
+                    logger.info(
+                        "[StyleGAN] style_code 즉시 추출 (cache miss). mood=%s",
+                        (style_code or {}).get("mood"),
+                    )
 
+                # 5) StyleGAN 루프: Generator(content+style) ↔ Discriminator(style 일치도)
+                MAX_ROUNDS = 3
+                STYLE_STRENGTH = 1.0  # 1.0 = style_code 엄격, 낮추면 자유 ↑
+                slides_spec: list[dict] = []
+                last_score = None
+                feedback: str | None = None
+                for round_idx in range(MAX_ROUNDS):
+                    slides_spec = await self._generator.generate(
+                        style_code=style_code or {},
+                        parsed_raw=parsed_raw or {},
+                        raw_text=raw_text_concat,
+                        style_strength=STYLE_STRENGTH,
+                        previous=slides_spec if round_idx > 0 else None,
+                        feedback=feedback,
+                    )
+                    if not slides_spec:
+                        logger.warning(
+                            "[StyleGAN] round %d: generator 빈 결과 — 중단",
+                            round_idx + 1,
+                        )
+                        break
+
+                    judgement = await self._discriminator.evaluate(
+                        slides=slides_spec,
+                        style_code=style_code or {},
+                    )
+                    last_score = judgement.get("score")
+                    logger.info(
+                        "[StyleGAN] round %d: score=%s matched=%s details=%s",
+                        round_idx + 1, last_score,
+                        judgement.get("matched"),
+                        judgement.get("details"),
+                    )
+                    if judgement.get("matched"):
+                        break
+                    feedback = judgement.get("feedback") or ""
+                    if not feedback:
+                        break
+
+                # 6) freeform 그리기
                 os.makedirs(self._output_dir, exist_ok=True)
-                result = self._pptx.generate_from_box_specs(
+                result = self._pptx.generate_from_freeform_specs(
                     form_type=form_type.value,
                     template_path=template_path,
-                    slides_specs=slides_boxes,
-                    llm_slide_outputs=llm_outputs,
+                    slides=slides_spec,
                     output_dir=self._output_dir,
-                    slides_background_shapes=slides_shapes,
                 )
                 file_name = os.path.basename(result.file_path)
                 saved_directory = os.path.dirname(result.file_path)
                 download_url = f"{self._download_url_prefix}/{file_name}"
+                logger.info(
+                    "[StyleGAN] 완료: slides=%d final_score=%s file=%s",
+                    result.slide_count, last_score, file_name,
+                )
                 return GeneratePptxResponse(
                     form_type=form_type.value,
                     sheet_name=form_type.value,
@@ -485,9 +547,7 @@ class GeneratePptxFromTemplateUseCase:
                     download_url=download_url,
                     slide_count=result.slide_count,
                     files_read=len(raw_files),
-                    chunks_referenced=sum(
-                        1 for s in llm_outputs if s.get("use")
-                    ),
+                    chunks_referenced=int(last_score or 0),
                 )
             else:
                 # === LLM 미주입 시 임베딩 기반 폴백 ===

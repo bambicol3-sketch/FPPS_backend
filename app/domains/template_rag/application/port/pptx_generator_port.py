@@ -29,6 +29,19 @@ class PptxGeneratorPort(ABC):
     ) -> GeneratedPptx: ...
 
     @abstractmethod
+    def generate_from_freeform_specs(
+        self,
+        form_type: str,
+        template_path: "str | None",
+        slides: list[dict],
+        output_dir: str,
+    ) -> GeneratedPptx:
+        """GAN Generator 가 만든 자유 박스 명세(slides[].boxes[], decorations[]) 로 PPT 생성.
+
+        template_path 가 있으면 슬라이드 크기/마스터/테마 보존. 박스/도형은 자유로 그림.
+        """
+
+    @abstractmethod
     def generate_from_box_specs(
         self,
         form_type: str,

@@ -594,14 +594,18 @@ async def create_rag_job(
         flat = _enrich_status_fields({
             "job_id": job_id,
             "status": "failed",
-            "form_type": form_type.value,
-            "template": form_type.value,
+            "form_type": form_type.value.upper(),
+            "template": form_type.value.upper(),
+            "form_type_original": form_type.value,
+            "template_original": form_type.value,
             "folder": folder_raw,
             "folder_path": folder_raw,
-            "sheet": sheet_name,
-            "sheet_name": sheet_name,
+            "sheet": (sheet_name or "").upper(),
+            "sheet_name": (sheet_name or "").upper(),
+            "sheet_original": sheet_name,
             "files_processed": 0,
             "files_failed": [],
+            "failed_files": [],
             "chunks_created": 0,
             "message": f"RAG 처리 중 예외가 발생했습니다: {e}",
         })
@@ -630,17 +634,26 @@ async def create_rag_job(
             f"{sheet_result.chunks_created}개 청크 생성"
         )
 
+    canonical_form = form_type.value.upper()
+    canonical_sheet = (sheet_result.sheet_name or "").upper()
     flat = _enrich_status_fields({
         "job_id": job_id,
         "status": status,
-        "form_type": form_type.value,
-        "template": form_type.value,
+        "form_type": canonical_form,
+        "template": canonical_form,
+        "form_type_original": form_type.value,
+        "template_original": form_type.value,
         "folder": sheet_result.folder_path,
         "folder_path": sheet_result.folder_path,
-        "sheet": sheet_result.sheet_name,
-        "sheet_name": sheet_result.sheet_name,
+        "sheet": canonical_sheet,
+        "sheet_name": canonical_sheet,
+        "sheet_original": sheet_result.sheet_name,
         "files_processed": sheet_result.files_processed,
         "files_failed": sheet_result.files_failed,
+        "failed_files": [
+            f.model_dump() if hasattr(f, "model_dump") else dict(f)
+            for f in (sheet_result.failed_files or [])
+        ],
         "chunks_created": sheet_result.chunks_created,
         "message": message,
     })
@@ -812,11 +825,37 @@ async def identify_template(
                         "raw data 폴더에 지원 확장자 파일(txt/md/pdf/docx/pptx)이 없습니다."
                     )
 
-    # === 시맨틱 식별: raw data 가 어느 양식 sheet 에 가장 가까운지 자동 판별 ===
+    # === 양식 식별 ===
+    # 우선순위:
+    # 1) request body 에 명시된 form_type (사용자 명시)
+    # 2) raw_data_dir 경로에 form_type 이름이 들어있으면 (예: /PPT/FRS/RAW DATA)
+    # 3) 시맨틱 매칭 (마지막 폴백)
     identified: Optional[str] = None
     identified_distance: Optional[float] = None
+    identification_source: str = "none"
 
-    if folder_raw and raw_data_ok and (raw_supported_count or 0) > 0:
+    # 1) request 의 form_type 명시
+    if form_type is not None:
+        identified = form_type.value
+        identification_source = "request"
+
+    # 2) 폴더 경로에서 form_type 추론
+    if identified is None and folder_raw:
+        path_lower = folder_raw.lower().replace(" ", "").replace("_", "")
+        # FormType 의 모든 enum value 와 alias 를 시도 (긴 것부터 매칭해 부분 일치 회피)
+        candidates = sorted(
+            [(ft.value, ft) for ft in FormType],
+            key=lambda x: -len(x[0]),
+        )
+        for value, ft in candidates:
+            needle = value.lower().replace(" ", "").replace("_", "")
+            if needle in path_lower:
+                identified = ft.value
+                identification_source = "path"
+                break
+
+    # 3) 시맨틱 매칭 (앞 두 단계가 실패할 때만)
+    if identified is None and folder_raw and raw_data_ok and (raw_supported_count or 0) > 0:
         try:
             from app.domains.template_rag.domain.service.chunking_service import (
                 ChunkingService as _ChunkingService,
@@ -839,6 +878,7 @@ async def identify_template(
                 best = await repo.identify_best_form_type(sample_emb)
                 if best is not None:
                     identified, identified_distance = best
+                    identification_source = "semantic"
         except Exception as e:
             import logging as _logging
             _logging.getLogger(__name__).warning(
@@ -895,21 +935,36 @@ async def identify_template(
     import logging as _logging
     _log = _logging.getLogger(__name__)
     _log.info(
-        "[/templates/identify] identified=%r distance=%r raw_files=%r db_chunks_by_form=%s",
+        "[/templates/identify] identified=%r source=%s distance=%r raw_files=%r db_chunks_by_form=%s",
         identified,
+        identification_source,
         identified_distance,
         raw_supported_count,
         total_by_form,
     )
 
-    # 프론트가 다양한 경로(response.identified / response.template / response.data.template / response.data.identified)
-    # 로 접근하므로 모두 채워서 반환한다.
+    # response_form_type 우선순위: identified (path/request 추론된 값) > 원래 response_form_type
+    if identified and not response_form_type:
+        response_form_type = identified
+
+    # 프론트는 expected 를 UPPER (예: "STRATEGY") 로 비교하기도 하고
+    # 원본 enum value (예: "Strategy") 로 비교하기도 함.
+    # 케이스 mismatch 방지 위해 응답에서는 UPPER 를 표준값으로 쓰고 원본도 같이 노출.
+    canonical_form = (response_form_type or "").upper()
+    canonical_identified = identified.upper() if identified else None
+
     flat = {
-        "form_type": response_form_type,
-        "sheet": response_form_type,
-        "template": response_form_type,
-        "identified": identified,
+        "form_type": canonical_form,
+        "sheet": canonical_form,
+        "template": canonical_form,
+        "identified": canonical_identified,
         "identified_distance": identified_distance,
+        "identification_source": identification_source,  # "request" | "path" | "semantic" | "none"
+        # 원본 케이스 (호환)
+        "form_type_original": response_form_type or "",
+        "sheet_original": response_form_type or "",
+        "template_original": response_form_type or "",
+        "identified_original": identified,
         "exists": template_exists,
         "chunk_count": chunk_count,
         "raw_data_folder": str(folder_raw) if folder_raw else None,
@@ -1081,13 +1136,16 @@ async def _create_ppt_generation_job(body: dict, db: AsyncSession) -> dict:
             {
                 "job_id": job_id,
                 "status": "failed",
-                "form_type": form_type.value,
-                "template": form_type.value,
+                "form_type": form_type.value.upper(),
+                "template": form_type.value.upper(),
+                "form_type_original": form_type.value,
+                "template_original": form_type.value,
                 "folder": folder_raw,
                 "folder_path": folder_raw,
                 "raw_data_folder": folder_raw,
-                "sheet": form_type.value,
-                "sheet_name": form_type.value,
+                "sheet": form_type.value.upper(),
+                "sheet_name": form_type.value.upper(),
+                "sheet_original": form_type.value,
                 "message": f"PPT 생성 실패: {e}",
             },
             is_ppt=True,
@@ -1101,13 +1159,16 @@ async def _create_ppt_generation_job(body: dict, db: AsyncSession) -> dict:
             {
                 "job_id": job_id,
                 "status": "failed",
-                "form_type": form_type.value,
-                "template": form_type.value,
+                "form_type": form_type.value.upper(),
+                "template": form_type.value.upper(),
+                "form_type_original": form_type.value,
+                "template_original": form_type.value,
                 "folder": folder_raw,
                 "folder_path": folder_raw,
                 "raw_data_folder": folder_raw,
-                "sheet": form_type.value,
-                "sheet_name": form_type.value,
+                "sheet": form_type.value.upper(),
+                "sheet_name": form_type.value.upper(),
+                "sheet_original": form_type.value,
                 "message": f"PPT 생성 중 예외: {e}",
             },
             is_ppt=True,
@@ -1121,13 +1182,16 @@ async def _create_ppt_generation_job(body: dict, db: AsyncSession) -> dict:
         {
             "job_id": job_id,
             "status": "completed",
-            "form_type": form_type.value,
-            "template": form_type.value,
+            "form_type": form_type.value.upper(),
+            "template": form_type.value.upper(),
+            "form_type_original": form_type.value,
+            "template_original": form_type.value,
             "folder": folder_raw,
             "folder_path": folder_raw,
             "raw_data_folder": folder_raw,
-            "sheet": result.sheet_name,
-            "sheet_name": result.sheet_name,
+            "sheet": (result.sheet_name or "").upper(),
+            "sheet_name": (result.sheet_name or "").upper(),
+            "sheet_original": result.sheet_name,
             "file_path": result.file_path,
             "file_name": result.file_name,
             "saved_directory": result.saved_directory,

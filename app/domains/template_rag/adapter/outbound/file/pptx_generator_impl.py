@@ -95,6 +95,109 @@ class PptxGeneratorImpl(PptxGeneratorPort):
 
         return GeneratedPptx(file_path=file_path, slide_count=len(prs.slides))
 
+    def generate_from_freeform_specs(
+        self,
+        form_type: str,
+        template_path: Optional[str],
+        slides: list[dict],
+        output_dir: str,
+    ) -> GeneratedPptx:
+        """GAN Generator 결과 그대로 빈 PPT 위에 박스/도형을 자유 좌표로 그림."""
+        try:
+            from pptx import Presentation
+            from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
+            from pptx.util import Emu, Pt
+        except ImportError as e:
+            raise RuntimeError("python-pptx 미설치") from e
+
+        os.makedirs(output_dir, exist_ok=True)
+        if template_path and os.path.isfile(template_path):
+            prs = Presentation(template_path)
+            self._remove_all_slides(prs)
+        else:
+            prs = Presentation()
+
+        sw = int(prs.slide_width or 0)
+        sh = int(prs.slide_height or 0)
+
+        # Blank layout
+        blank_layout = None
+        for layout in prs.slide_layouts:
+            if "blank" in (layout.name or "").lower():
+                blank_layout = layout
+                break
+        if blank_layout is None:
+            blank_layout = prs.slide_layouts[-1]
+
+        align_map = {
+            "LEFT": PP_ALIGN.LEFT,
+            "CENTER": PP_ALIGN.CENTER,
+            "RIGHT": PP_ALIGN.RIGHT,
+            "JUSTIFY": PP_ALIGN.JUSTIFY,
+        }
+
+        def _pct_to_emu(pct: float, base: int) -> int:
+            return int(max(0.0, min(pct, 100.0)) / 100.0 * base)
+
+        for slide_data in slides:
+            slide = prs.slides.add_slide(blank_layout)
+
+            # 1) decoration 먼저 (z-order 아래)
+            for deco in (slide_data.get("decorations") or []):
+                self._draw_decoration(slide, deco, sw, sh)
+
+            # 2) box (텍스트)
+            for box in (slide_data.get("boxes") or []):
+                left = _pct_to_emu(float(box.get("left_pct", 0)), sw)
+                top = _pct_to_emu(float(box.get("top_pct", 0)), sh)
+                width = _pct_to_emu(float(box.get("width_pct", 0)), sw)
+                height = _pct_to_emu(float(box.get("height_pct", 0)), sh)
+                if width <= 0 or height <= 0:
+                    continue
+                text = (box.get("text") or "").strip()
+                if not text:
+                    continue
+                try:
+                    tx = slide.shapes.add_textbox(
+                        Emu(left), Emu(top), Emu(width), Emu(height)
+                    )
+                except Exception:
+                    continue
+                tf = tx.text_frame
+                tf.word_wrap = True
+                try:
+                    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_SHAPE
+                except Exception:
+                    pass
+                font_size_pt = float(box.get("font_size_pt", 14) or 14)
+                bold = bool(box.get("bold", False))
+                color_hex = (box.get("color_hex") or "").lstrip("#") or None
+                align = (box.get("align") or "LEFT").upper()
+                for i, line in enumerate(text.split("\n")):
+                    p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                    p.text = line
+                    try:
+                        p.font.size = Pt(font_size_pt)
+                        p.font.bold = bold
+                        if color_hex:
+                            from pptx.dml.color import RGBColor
+                            p.font.color.rgb = RGBColor.from_string(color_hex)
+                        if align in align_map:
+                            p.alignment = align_map[align]
+                    except Exception:
+                        pass
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_form = "".join(c if c.isalnum() else "_" for c in form_type)
+        file_name = f"{safe_form}_{timestamp}.pptx"
+        file_path = os.path.join(output_dir, file_name)
+        prs.save(file_path)
+        logger.info(
+            "[TemplateRAG] PPTX (freeform) 생성: %s (slides=%d)",
+            file_path, len(prs.slides),
+        )
+        return GeneratedPptx(file_path=file_path, slide_count=len(prs.slides))
+
     def generate_from_box_specs(
         self,
         form_type: str,

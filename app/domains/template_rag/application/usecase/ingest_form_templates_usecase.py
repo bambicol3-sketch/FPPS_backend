@@ -15,6 +15,9 @@ from app.domains.template_rag.application.port.llm_json_client_port import (
 from app.domains.template_rag.application.port.template_chunk_repository_port import (
     TemplateChunkRepositoryPort,
 )
+from app.domains.template_rag.application.service.style_extractor import (
+    StyleExtractor,
+)
 from app.domains.template_rag.application.service.template_parser import (
     TemplateParser,
 )
@@ -48,6 +51,9 @@ class IngestFormTemplatesUseCase:
         self._llm_json = llm_json
         self._template_parser = (
             TemplateParser(llm_json) if llm_json else None
+        )
+        self._style_extractor = (
+            StyleExtractor(llm_json) if llm_json else None
         )
 
     async def execute(
@@ -110,41 +116,70 @@ class IngestFormTemplatesUseCase:
 
         files = self._reader.collect(folder_path)
         processed = 0
-        failed: list[str] = []
+        failed: list[tuple[str, str]] = []  # (path, reason)
         chunks_created = 0
 
         for extracted in files:
             try:
-                # === 임베딩 전 양식 파싱 (PPTX 만, 캐시 활용) ===
+                # === 임베딩 전 양식 파싱 + style_code 추출 (PPTX 만, 캐시 활용) ===
                 if (
                     self._template_parser is not None
                     and extracted.file_path.lower().endswith(".pptx")
                 ):
                     cache_key = f"template_parse:{form_type}:{extracted.file_hash}"
-                    if ParseCache.get(cache_key) is None:
+                    cached = ParseCache.get(cache_key)
+                    needs_parse = cached is None
+                    needs_style = (
+                        cached is None or "style_code" not in (cached or {})
+                    )
+                    if needs_parse or needs_style:
                         try:
                             from app.domains.template_rag.application.usecase.generate_pptx_from_template_usecase import (
                                 GeneratePptxFromTemplateUseCase as _UC,
                             )
-                            visual = _UC._extract_template_visual_meta(
-                                extracted.file_path
+                            visual = cached.get("visual") if cached else None
+                            if visual is None:
+                                visual = _UC._extract_template_visual_meta(
+                                    extracted.file_path
+                                )
+
+                            parsed = cached.get("parsed") if cached else None
+                            if parsed is None:
+                                parsed = await self._template_parser.parse(
+                                    slides_boxes=visual["slides_boxes"],
+                                    slides_shapes=visual["slides_shapes"],
+                                    color_palette=visual["color_palette"],
+                                )
+
+                            style_code = (
+                                cached.get("style_code") if cached else None
                             )
-                            parsed = await self._template_parser.parse(
-                                slides_boxes=visual["slides_boxes"],
-                                slides_shapes=visual["slides_shapes"],
-                                color_palette=visual["color_palette"],
-                            )
+                            if style_code is None and self._style_extractor is not None:
+                                style_code = await self._style_extractor.extract(
+                                    slides_boxes=visual["slides_boxes"],
+                                    slides_shapes=visual["slides_shapes"],
+                                    color_palette=visual["color_palette"],
+                                    font_palette=visual["font_palette"],
+                                    font_size_palette=visual["font_size_palette"],
+                                )
+
                             ParseCache.set(
                                 cache_key,
-                                {"visual": visual, "parsed": parsed},
+                                {
+                                    "visual": visual,
+                                    "parsed": parsed,
+                                    "style_code": style_code,
+                                },
                             )
                             logger.info(
-                                "[Ingest] 양식 파싱 캐시 저장: %s",
+                                "[Ingest] 양식 파싱+style 캐시 저장: %s "
+                                "(mood=%s)",
                                 extracted.file_path,
+                                (style_code or {}).get("mood"),
                             )
                         except Exception as e:
                             logger.warning(
-                                "[Ingest] 양식 파싱 실패 (계속 진행): %s",
+                                "[Ingest] 양식 파싱/style 실패 (계속 진행): %s",
                                 e,
                             )
 
@@ -160,7 +195,13 @@ class IngestFormTemplatesUseCase:
 
                 chunks_text = ChunkingService.split(extracted.text)
                 if not chunks_text:
-                    processed += 1
+                    failed.append(
+                        (
+                            extracted.file_path,
+                            "텍스트 추출 결과가 비어 있음 (이미지 OCR 실패, 빈 파일, "
+                            "스캔 PDF 처럼 텍스트 레이어 없는 경우 등)",
+                        )
+                    )
                     continue
 
                 embeddings = await self._embedding.generate_batch(chunks_text)
@@ -186,13 +227,15 @@ class IngestFormTemplatesUseCase:
                 logger.exception(
                     "[Ingest] %s 처리 실패: %s", extracted.file_path, e
                 )
-                failed.append(extracted.file_path)
+                reason = f"{type(e).__name__}: {str(e)[:200]}"
+                failed.append((extracted.file_path, reason))
 
         return SheetIngestResult(
             form_type=form_type,
             sheet_name=sheet_name,
             folder_path=folder_path,
             files_processed=processed,
-            files_failed=failed,
+            files_failed=[p for p, _ in failed],
+            failed_files=[{"path": p, "reason": r} for p, r in failed],
             chunks_created=chunks_created,
         )

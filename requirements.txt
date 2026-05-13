@@ -67,3 +67,6 @@ holidays==0.95
 python-pptx>=1.0.0
 python-docx>=1.1.0
 pypdf>=4.0.0
+openpyxl>=3.1.0
+xlrd>=1.2.0,<2.0          # .xls (구식 Excel) 지원 — 2.0+ 는 xlsx 제거
+olefile>=0.46             # .doc (구식 Word) OLE 컨테이너 텍스트 추출
