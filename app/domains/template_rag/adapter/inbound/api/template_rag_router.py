@@ -76,6 +76,21 @@ from app.domains.template_rag.application.config.form_type_mapping import (
 )
 from app.domains.template_rag.domain.value_object.form_type import FormType
 from datetime import datetime as _dt
+from app.domains.template_rag.adapter.outbound.external.openai_chat_client import (
+    OpenAIChatClient,
+)
+from app.domains.template_rag.adapter.outbound.persistence.in_memory_chat_session_store import (
+    InMemoryChatSessionStore,
+)
+from app.domains.template_rag.application.request.chat_request import ChatRequest
+from app.domains.template_rag.application.response.chat_response import (
+    ChatHistoryResponse,
+    ChatMessageDTO,
+    ChatResponse,
+)
+from app.domains.template_rag.application.usecase.chat_pptx_usecase import (
+    ChatPptxUseCase,
+)
 from app.domains.template_rag.application.usecase.generate_pptx_from_template_usecase import (
     GeneratePptxFromTemplateUseCase,
 )
@@ -90,6 +105,9 @@ router = APIRouter(tags=["rag"])  # prefix 는 v1_router 에서 mount 시 지정
 PPTX_OUTPUT_DIR = os.path.abspath(
     os.path.join(os.getcwd(), "generated_pptx")
 )
+
+# 세션 저장소: 프로세스 내 공유 인스턴스 (서버 재시작 시 휘발)
+_CHAT_STORE = InMemoryChatSessionStore()
 
 # 동기로 실행되는 /jobs 결과를 프론트가 폴링/스트리밍으로 받아갈 수 있게
 # job_id → response payload 를 in-memory 로 캐싱한다. 서버 재시작 시 휘발됨.
@@ -1021,6 +1039,66 @@ async def get_embeddings_by_form_type(
         "embeddings": items,
     }
     return {**flat, "success": True, "data": flat}
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat_pptx(
+    request: ChatRequest,
+    _user=Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """대화형 PPT 생성 인터페이스.
+
+    - session_id 없이 첫 요청하면 새 세션 생성
+    - 이후 반환된 session_id 를 함께 보내면 대화가 이어짐
+    - form_type 과 raw_data_dir 를 모두 확인하면 자동으로 PPT 를 생성함
+    """
+    generate_usecase = GeneratePptxFromTemplateUseCase(
+        repository=TemplateChunkRepositoryImpl(db),
+        embedding=OpenAIEmbeddingClient(),
+        file_reader=FilesystemFileReader(),
+        pptx_generator=PptxGeneratorImpl(),
+        output_dir=PPTX_OUTPUT_DIR,
+        llm_json=OpenAILlmJsonClient(),
+    )
+    usecase = ChatPptxUseCase(
+        session_store=_CHAT_STORE,
+        chat_llm=OpenAIChatClient(),
+        generate_pptx_usecase=generate_usecase,
+    )
+    result = await usecase.execute(
+        message=request.message,
+        session_id=request.session_id,
+    )
+    return ChatResponse(
+        session_id=result.session_id,
+        reply=result.reply,
+        status=result.status,
+        result=result.result,
+    )
+
+
+@router.get("/chat/{session_id}", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    session_id: str,
+    _user=Depends(require_authenticated_user),
+):
+    """세션 ID 로 대화 히스토리 조회."""
+    session = _CHAT_STORE.load(session_id)
+    if not session:
+        raise AppException(
+            status_code=404,
+            message=f"세션을 찾을 수 없습니다: {session_id}",
+        )
+    return ChatHistoryResponse(
+        session_id=session.session_id,
+        messages=[
+            ChatMessageDTO(role=m.role, content=m.content)
+            for m in session.messages
+        ],
+        status=session.status,
+        result=session.result,
+    )
 
 
 async def _create_ppt_generation_job(body: dict, db: AsyncSession) -> dict:
