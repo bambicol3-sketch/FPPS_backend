@@ -1,12 +1,21 @@
 import asyncio
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.domains.ddakjubu2.application.port.ddakjubu2_note_writer_port import (
     Ddakjubu2NoteWriterPort,
 )
 from app.domains.ddakjubu2.application.port.ddakjubu2_video_fetch_port import (
     Ddakjubu2VideoFetchPort,
+)
+from app.domains.ddakjubu2.application.port.learning_note_repository_port import (
+    LearningNoteRepositoryPort,
+)
+from app.domains.ddakjubu2.application.port.methodology_extraction_port import (
+    MethodologyExtractionPort,
+)
+from app.domains.ddakjubu2.application.port.methodology_repository_port import (
+    MethodologyRepositoryPort,
 )
 from app.domains.ddakjubu2.application.port.video_learning_port import VideoLearningPort
 from app.domains.ddakjubu2.application.port.video_summarization_port import (
@@ -45,6 +54,10 @@ class EnhanceDdakjubu2VideosUseCase:
         note_writer_port: Ddakjubu2NoteWriterPort,
         published_after: datetime,
         sleep_between_videos_seconds: int,
+        methodology_extraction_port: Optional[MethodologyExtractionPort] = None,
+        note_repository_port: Optional[LearningNoteRepositoryPort] = None,
+        methodology_repository_port: Optional[MethodologyRepositoryPort] = None,
+        llm_model_label: str = "",
     ):
         self._video_fetch_port = video_fetch_port
         self._transcript_fetch_port = transcript_fetch_port
@@ -53,6 +66,53 @@ class EnhanceDdakjubu2VideosUseCase:
         self._note_writer_port = note_writer_port
         self._published_after = published_after
         self._sleep_seconds = sleep_between_videos_seconds
+        self._methodology_extraction_port = methodology_extraction_port
+        self._note_repository_port = note_repository_port
+        self._methodology_repository_port = methodology_repository_port
+        self._llm_model_label = llm_model_label
+
+    async def _persist_note_and_methodology(
+        self, video: SourceVideo, note: LearningNote
+    ) -> None:
+        """DB 저장 + 방법론 추출. 실패해도 md 저장 파이프라인은 계속 진행한다."""
+        if self._note_repository_port is not None:
+            try:
+                if not await self._note_repository_port.exists(note.video_id):
+                    await self._note_repository_port.save_note(
+                        note,
+                        has_transcript=bool(video.transcript),
+                        source="enhanced",
+                    )
+            except Exception as e:
+                print(
+                    f"[ddakjubu2_enhance]   ! 노트 DB 저장 실패 "
+                    f"video_id={note.video_id} error={e}",
+                    flush=True,
+                )
+
+        if (
+            self._methodology_extraction_port is not None
+            and self._methodology_repository_port is not None
+        ):
+            try:
+                if not await self._methodology_repository_port.exists(note.video_id):
+                    methodology = await self._methodology_extraction_port.extract(
+                        video, note
+                    )
+                    await self._methodology_repository_port.save(
+                        methodology, model=self._llm_model_label
+                    )
+                    print(
+                        f"[ddakjubu2_enhance]   - 방법론 추출 "
+                        f"steps={len(methodology.analysis_steps)}",
+                        flush=True,
+                    )
+            except Exception as e:
+                print(
+                    f"[ddakjubu2_enhance]   ! 방법론 추출 실패 "
+                    f"video_id={note.video_id} error={e}",
+                    flush=True,
+                )
 
     async def execute(self) -> LearnDdakjubu2Response:
         print(
@@ -136,6 +196,7 @@ class EnhanceDdakjubu2VideosUseCase:
                     f"종목 {len(note.stock_insights)}개",
                     flush=True,
                 )
+                await self._persist_note_and_methodology(video, note)
                 batch_buffer.append(note)
                 all_notes.append(note)
             except Exception as e:

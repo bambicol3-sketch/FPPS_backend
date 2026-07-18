@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     # 자막 포함 재학습 시 영상 간 대기 (초). IP 차단을 피하기 위해 느리게 진행.
     ddakjubu2_enhance_sleep_seconds: int = 600
     ddakjubu2_enhance_published_after_iso: str = "2026-01-01T00:00:00+00:00"
+    # 매일 학습 잡에서 자막 조회 시 영상 간 대기 (일일 1~3편이라 짧게)
+    ddakjubu2_daily_transcript_sleep_seconds: int = 120
+    # 방법론 적용 분석 결과 Redis 캐시 TTL
+    ddakjubu2_apply_cache_ttl_seconds: int = 21600
+    # 마스터 방법론 병합 시 사용할 최근 영상 방법론 수
+    ddakjubu2_master_merge_max_videos: int = 50
+    # 방법론 적용 분석 LLM reasoning effort (minimal | low | medium)
+    ddakjubu2_apply_reasoning_effort: str = "low"
 
     # YouTube 자막 IP 차단 우회용 프록시 설정
     # 아래 중 우선순위: Webshare → Generic HTTP/HTTPS → 미사용(직결)

@@ -13,7 +13,10 @@ from app.infrastructure.scheduler.disclosure_jobs import (
     job_seasonal_semiannual,
     job_seasonal_annual,
 )
-from app.infrastructure.scheduler.ddakjubu2_jobs import job_learn_ddakjubu2_videos
+from app.infrastructure.scheduler.ddakjubu2_jobs import (
+    job_learn_ddakjubu2_videos,
+    job_rebuild_master_methodology,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +90,16 @@ def create_disclosure_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,
     )
 
+    # Weekly Sun 06:00 KST — rebuild ddakjubu2 master methodology from recent videos
+    scheduler.add_job(
+        job_rebuild_master_methodology,
+        trigger=CronTrigger(day_of_week="sun", hour=6, minute=0, timezone=KST),
+        id="rebuild_ddakjubu2_master_methodology",
+        name="Rebuild ddakjubu2 master methodology (weekly Sun 06:00 KST)",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     # -- Seasonal report collection --
 
     # Quarterly report (A003): Mar, May, Aug, Nov 15th at 04:00 KST
@@ -119,5 +132,7 @@ def create_disclosure_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,
     )
 
-    logger.info("Disclosure scheduler configured (9 jobs: 1 hourly, 5 daily, 3 seasonal)")
+    logger.info(
+        "Disclosure scheduler configured (10 jobs: 1 hourly, 5 daily, 1 weekly, 3 seasonal)"
+    )
     return scheduler

@@ -44,6 +44,10 @@ import app.domains.study_room.infrastructure.orm.dashboard_snapshot_orm  # noqa:
 import app.domains.mse_market_analysis.infrastructure.orm.market_analysis_snapshot_orm  # noqa: F401
 import app.domains.mse_sectors.infrastructure.orm.sectors_snapshot_orm  # noqa: F401
 import app.domains.mse_credit.infrastructure.orm.credit_snapshot_orm  # noqa: F401
+import app.domains.ddakjubu2.infrastructure.orm.learning_note_orm  # noqa: F401
+import app.domains.ddakjubu2.infrastructure.orm.methodology_orm  # noqa: F401
+import app.domains.ddakjubu2.infrastructure.orm.master_methodology_orm  # noqa: F401
+import app.domains.ddakjubu2.infrastructure.orm.applied_analysis_orm  # noqa: F401
 
 setup_logging()
 configure_langsmith()
