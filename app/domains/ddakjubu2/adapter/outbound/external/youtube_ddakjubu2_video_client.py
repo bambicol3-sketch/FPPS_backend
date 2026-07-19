@@ -107,6 +107,36 @@ class YoutubeDdakjubu2VideoClient(Ddakjubu2VideoFetchPort):
         print(f"[ddakjubu2_youtube] 총 수집된 영상 수={len(collected)}")
         return collected
 
+    async def fetch_videos_by_ids(self, video_ids: List[str]) -> List[SourceVideo]:
+        if not video_ids:
+            return []
+
+        collected: List[SourceVideo] = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            details = await self._fetch_video_details(client, video_ids)
+
+        for video_id in video_ids:
+            detail = details.get(video_id)
+            if not detail:
+                print(f"[ddakjubu2_youtube] 영상 상세 없음 video_id={video_id}")
+                continue
+            snippet = detail.get("snippet", {})
+            collected.append(
+                SourceVideo(
+                    video_id=video_id,
+                    title=snippet.get("title", ""),
+                    description=snippet.get("description", ""),
+                    transcript="",
+                    channel_id=snippet.get("channelId", ""),
+                    channel_name=snippet.get("channelTitle", ""),
+                    published_at=self._parse_datetime(snippet.get("publishedAt")),
+                    collected_at=datetime.now(timezone.utc),
+                    video_url=f"https://www.youtube.com/watch?v={video_id}",
+                    program_category="전체영상",
+                )
+            )
+        return collected
+
     async def _get_uploads_playlist_id(
         self,
         client: httpx.AsyncClient,

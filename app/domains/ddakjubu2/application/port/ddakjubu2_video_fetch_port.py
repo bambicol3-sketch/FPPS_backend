@@ -21,3 +21,8 @@ class Ddakjubu2VideoFetchPort(ABC):
         영상이 존재하지 않는 경우에도 빈 리스트를 반환한다.
         """
         raise NotImplementedError
+
+    @abstractmethod
+    async def fetch_videos_by_ids(self, video_ids: List[str]) -> List[SourceVideo]:
+        """video_id 목록으로 영상 상세를 직접 조회한다. 없는 ID 는 결과에서 제외된다."""
+        raise NotImplementedError

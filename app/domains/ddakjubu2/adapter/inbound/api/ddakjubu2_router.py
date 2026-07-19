@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import redis.asyncio as aioredis
@@ -73,6 +73,12 @@ from app.domains.ddakjubu2.application.usecase.get_learning_note_detail_usecase 
 from app.domains.ddakjubu2.application.usecase.get_learning_notes_usecase import (
     GetLearningNotesUseCase,
 )
+from app.domains.ddakjubu2.application.request.learn_video_request import (
+    LearnVideoRequest,
+)
+from app.domains.ddakjubu2.application.usecase.learn_single_video_usecase import (
+    LearnSingleVideoUseCase,
+)
 from app.domains.ddakjubu2.application.usecase.learn_ddakjubu2_videos_usecase import (
     LearnDdakjubu2VideosUseCase,
 )
@@ -129,8 +135,14 @@ async def learn_ddakjubu2_videos():
 
 
 @router.post("/enhance")
-async def enhance_ddakjubu2_videos(background_tasks: BackgroundTasks):
-    """2026년 업로드 영상을 자막 포함으로 재학습하여 별도 파일에 저장한다.
+async def enhance_ddakjubu2_videos(
+    background_tasks: BackgroundTasks,
+    published_after: Optional[str] = Query(
+        default=None,
+        description="이 일시(ISO 8601) 이후 업로드 영상만 재학습. 미지정 시 설정값 사용.",
+    ),
+):
+    """지정 기간 이후 업로드 영상을 자막 포함으로 재학습하여 별도 파일에 저장한다.
 
     10분/영상 페이스로 진행되어 수 시간이 걸리므로 HTTP 응답은 즉시 반환하고
     실제 파이프라인은 백그라운드로 실행된다.
@@ -153,9 +165,18 @@ async def enhance_ddakjubu2_videos(background_tasks: BackgroundTasks):
         file_path=settings.ddakjubu2_enhanced_md_path
     )
 
-    published_after = datetime.fromisoformat(
-        settings.ddakjubu2_enhance_published_after_iso
+    published_after_iso = (
+        published_after or settings.ddakjubu2_enhance_published_after_iso
     )
+    try:
+        published_after_dt = datetime.fromisoformat(published_after_iso)
+    except ValueError:
+        raise AppException(
+            status_code=400,
+            message=f"published_after 형식이 잘못됐습니다 (ISO 8601): {published_after_iso}",
+        )
+    if published_after_dt.tzinfo is None:
+        published_after_dt = published_after_dt.replace(tzinfo=timezone.utc)
 
     usecase = EnhanceDdakjubu2VideosUseCase(
         video_fetch_port=video_fetch_port,
@@ -163,7 +184,7 @@ async def enhance_ddakjubu2_videos(background_tasks: BackgroundTasks):
         video_summarization_port=video_summarization_port,
         video_learning_port=video_learning_port,
         note_writer_port=note_writer_port,
-        published_after=published_after,
+        published_after=published_after_dt,
         sleep_between_videos_seconds=settings.ddakjubu2_enhance_sleep_seconds,
         methodology_extraction_port=OpenAIMethodologyExtractionClient(
             api_key=settings.openai_api_key,
@@ -181,7 +202,7 @@ async def enhance_ddakjubu2_videos(background_tasks: BackgroundTasks):
             "status": "started",
             "file_path": settings.ddakjubu2_enhanced_md_path,
             "sleep_between_videos_seconds": settings.ddakjubu2_enhance_sleep_seconds,
-            "published_after": settings.ddakjubu2_enhance_published_after_iso,
+            "published_after": published_after_iso,
         },
         message="딱주부2 자막 포함 재학습이 백그라운드로 시작됐습니다",
     )
@@ -374,3 +395,49 @@ async def get_apply_analysis_history(
         data={"items": [item.model_dump() for item in items]},
         message="방법론 적용 분석 이력 조회 완료",
     )
+
+
+# ------------------------------------------------------------------
+# 단건 영상 학습 (URL/ID 지정)
+# ------------------------------------------------------------------
+
+
+@router.post("/learn-video")
+async def learn_single_video(request: LearnVideoRequest):
+    """YouTube URL 또는 video_id 하나를 지정해 즉시 학습한다.
+
+    자막 조회 → 요약 → 종목 인사이트 → 방법론 추출 → DB/md 저장까지 동기 실행.
+    이미 학습된 영상이면 LLM 호출 없이 기존 결과를 반환한다.
+    """
+    settings = get_settings()
+    usecase = LearnSingleVideoUseCase(
+        video_fetch_port=YoutubeDdakjubu2VideoClient(api_key=settings.youtube_api_key),
+        transcript_fetch_port=YoutubeTranscriptApiClient(
+            proxy_config=build_proxy_config_from_settings(settings)
+        ),
+        video_summarization_port=OpenAIVideoSummarizationClient(
+            api_key=settings.openai_api_key,
+            model=settings.ddakjubu2_llm_model,
+        ),
+        video_learning_port=OpenAIVideoLearningClient(
+            api_key=settings.openai_api_key,
+            model=settings.ddakjubu2_llm_model,
+        ),
+        methodology_extraction_port=OpenAIMethodologyExtractionClient(
+            api_key=settings.openai_api_key,
+            model=settings.ddakjubu2_llm_model,
+        ),
+        note_writer_port=Ddakjubu2MarkdownFileWriter(
+            file_path=settings.ddakjubu2_md_path
+        ),
+        note_repository_port=LearningNoteRepositoryImpl(),
+        methodology_repository_port=MethodologyRepositoryImpl(),
+        llm_model_label=settings.ddakjubu2_llm_model,
+    )
+    response = await usecase.execute(request.video_input)
+    message = (
+        "이미 학습된 영상입니다"
+        if response.already_learned
+        else "영상 학습 및 방법론 추출 완료"
+    )
+    return BaseResponse.ok(data=response, message=message)
