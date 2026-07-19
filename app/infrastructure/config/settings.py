@@ -85,6 +85,18 @@ class Settings(BaseSettings):
     # 방법론 적용 분석 LLM reasoning effort (minimal | low | medium)
     ddakjubu2_apply_reasoning_effort: str = "low"
 
+    # 팹 지식 에이전트 (fab-agent) — base_url 을 지정하면 온프레미스
+    # OpenAI 호환 서빙(vLLM/TGI/TEI)으로 전환된다. 비우면 OpenAI 사용.
+    fab_llm_base_url: str = ""
+    fab_llm_api_key: str = ""
+    fab_llm_model: str = "gpt-5-mini"
+    fab_embedding_base_url: str = ""
+    fab_embedding_model: str = "text-embedding-3-small"
+    fab_admin_emails: str = ""  # 콤마 구분, 최초 접근 시 관리자 자동 부트스트랩
+    fab_search_top_k: int = 6
+    fab_max_history_turns: int = 6
+    fab_auth_dev_header: bool = False  # True 시 X-Fab-User 헤더 인증 허용(개발 전용)
+
     # YouTube 자막 IP 차단 우회용 프록시 설정
     # 아래 중 우선순위: Webshare → Generic HTTP/HTTPS → 미사용(직결)
     youtube_proxy_webshare_username: str = ""

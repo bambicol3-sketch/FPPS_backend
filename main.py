@@ -48,6 +48,9 @@ import app.domains.ddakjubu2.infrastructure.orm.learning_note_orm  # noqa: F401
 import app.domains.ddakjubu2.infrastructure.orm.methodology_orm  # noqa: F401
 import app.domains.ddakjubu2.infrastructure.orm.master_methodology_orm  # noqa: F401
 import app.domains.ddakjubu2.infrastructure.orm.applied_analysis_orm  # noqa: F401
+import app.domains.fab_agent.infrastructure.orm.fab_document_orm  # noqa: F401
+import app.domains.fab_agent.infrastructure.orm.fab_access_orm  # noqa: F401
+import app.domains.fab_agent.infrastructure.orm.fab_audit_orm  # noqa: F401
 
 setup_logging()
 configure_langsmith()
