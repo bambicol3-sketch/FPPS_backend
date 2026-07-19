@@ -51,6 +51,7 @@ import app.domains.ddakjubu2.infrastructure.orm.applied_analysis_orm  # noqa: F4
 import app.domains.fab_agent.infrastructure.orm.fab_document_orm  # noqa: F401
 import app.domains.fab_agent.infrastructure.orm.fab_access_orm  # noqa: F401
 import app.domains.fab_agent.infrastructure.orm.fab_audit_orm  # noqa: F401
+import app.domains.frontier_agent.infrastructure.orm.frontier_orm  # noqa: F401
 
 setup_logging()
 configure_langsmith()

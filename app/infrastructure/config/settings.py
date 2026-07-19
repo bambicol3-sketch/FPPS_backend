@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     fab_max_history_turns: int = 6
     fab_auth_dev_header: bool = False  # True 시 X-Fab-User 헤더 인증 허용(개발 전용)
 
+    # 프론티어 에이전트 (frontier-agent) — 자율 다도구 분석 에이전트
+    frontier_llm_base_url: str = ""  # 지정 시 온프레미스 OpenAI 호환 서빙
+    frontier_llm_api_key: str = ""
+    frontier_llm_model: str = "gpt-5-mini"
+    frontier_max_revisions: int = 1  # Reviewer REVISE 재분석 최대 횟수
+
     # YouTube 자막 IP 차단 우회용 프록시 설정
     # 아래 중 우선순위: Webshare → Generic HTTP/HTTPS → 미사용(직결)
     youtube_proxy_webshare_username: str = ""
