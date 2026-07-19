@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel
@@ -34,6 +35,7 @@ from app.domains.ddakjubu2.application.usecase.get_learning_note_detail_usecase 
     methodology_to_dto,
 )
 from app.domains.ddakjubu2.domain.entity.learning_note import LearningNote
+from app.domains.ddakjubu2.domain.entity.source_video import SourceVideo
 from app.domains.ddakjubu2.domain.service.youtube_video_id_parser import (
     extract_video_id,
 )
@@ -73,7 +75,13 @@ class LearnSingleVideoUseCase:
         self._methodology_repository_port = methodology_repository_port
         self._llm_model_label = llm_model_label
 
-    async def execute(self, video_input: str) -> LearnVideoResponse:
+    async def execute(
+        self,
+        video_input: str,
+        title: Optional[str] = None,
+        transcript: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> LearnVideoResponse:
         video_id = extract_video_id(video_input)
         if video_id is None:
             raise AppException(
@@ -91,35 +99,62 @@ class LearnSingleVideoUseCase:
                 note=existing,
             )
 
-        videos = await self._video_fetch_port.fetch_videos_by_ids([video_id])
-        if not videos:
-            raise AppException(
-                status_code=404,
-                message=(
-                    "YouTube 에서 영상 정보를 가져오지 못했습니다. "
-                    "video_id 또는 YOUTUBE_API_KEY 설정을 확인해 주세요."
-                ),
-            )
-        video = videos[0]
-        print(
-            f"[ddakjubu2_single] 학습 시작 video_id={video_id} "
-            f"title={video.title[:50]}",
-            flush=True,
-        )
+        manual_transcript = (transcript or "").strip()
+        manual_title = (title or "").strip()
+        manual_mode = bool(manual_transcript or manual_title)
 
-        try:
-            video.transcript = await self._transcript_fetch_port.fetch_transcript(
-                video_id
+        if manual_mode:
+            # 직접 붙여넣기: YouTube Data API·자막 스크래핑을 건너뛴다
+            # (라이브 다시보기·폐쇄망·API 키 미설정 환경 지원)
+            video = SourceVideo(
+                video_id=video_id,
+                title=manual_title or f"딱주부TV 수동 학습 {video_id}",
+                description=(description or "").strip(),
+                transcript=manual_transcript,
+                channel_id="",
+                channel_name="딱딱한 주식 부드럽게 | 딱주부TV",
+                published_at=datetime.now(timezone.utc),
+                collected_at=datetime.now(timezone.utc),
+                video_url=f"https://www.youtube.com/watch?v={video_id}",
+                program_category="전체영상",
             )
             print(
-                f"[ddakjubu2_single] 자막 길이={len(video.transcript)}", flush=True
-            )
-        except Exception as e:
-            print(
-                f"[ddakjubu2_single] 자막 조회 실패(요약만으로 진행) error={e}",
+                f"[ddakjubu2_single] 직접 입력 학습 video_id={video_id} "
+                f"title={video.title[:50]} 자막길이={len(manual_transcript)}",
                 flush=True,
             )
-            video.transcript = ""
+        else:
+            videos = await self._video_fetch_port.fetch_videos_by_ids([video_id])
+            if not videos:
+                raise AppException(
+                    status_code=404,
+                    message=(
+                        "YouTube 에서 영상 정보를 가져오지 못했습니다. "
+                        "video_id/YOUTUBE_API_KEY 를 확인하거나, "
+                        "제목·자막을 직접 입력해 학습해 주세요."
+                    ),
+                )
+            video = videos[0]
+            print(
+                f"[ddakjubu2_single] 학습 시작 video_id={video_id} "
+                f"title={video.title[:50]}",
+                flush=True,
+            )
+
+            try:
+                video.transcript = await self._transcript_fetch_port.fetch_transcript(
+                    video_id
+                )
+                print(
+                    f"[ddakjubu2_single] 자막 길이={len(video.transcript)}",
+                    flush=True,
+                )
+            except Exception as e:
+                print(
+                    f"[ddakjubu2_single] 자막 조회 실패(요약만으로 진행) error={e}",
+                    flush=True,
+                )
+                video.transcript = ""
 
         video.summary = await self._video_summarization_port.summarize(video)
         note: LearningNote = await self._video_learning_port.learn(video)

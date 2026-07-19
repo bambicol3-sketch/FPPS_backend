@@ -434,7 +434,12 @@ async def learn_single_video(request: LearnVideoRequest):
         methodology_repository_port=MethodologyRepositoryImpl(),
         llm_model_label=settings.ddakjubu2_llm_model,
     )
-    response = await usecase.execute(request.video_input)
+    response = await usecase.execute(
+        request.video_input,
+        title=request.title,
+        transcript=request.transcript,
+        description=request.description,
+    )
     message = (
         "이미 학습된 영상입니다"
         if response.already_learned
