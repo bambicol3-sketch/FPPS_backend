@@ -1,0 +1,29 @@
+name: Build Self-Host Backend Zip
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "alembic/**"
+      - "alembic.ini"
+      - "main.py"
+      - "requirements.txt"
+      - ".env.example"
+      - "packaging/server-dist/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build self-hosting dist zip
+        run: python3 packaging/server-dist/build_dist_zip.py
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: antelligen-backend-dist
+          path: dist/*.zip
